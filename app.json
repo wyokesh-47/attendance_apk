@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "ATTENDANCE",
+    "slug": "acadence-attendance",
+    "scheme": "acadence-attendance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "icon": "./assets/attendance-logo.png",
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
