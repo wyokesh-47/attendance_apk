@@ -21,3 +21,10 @@ macos/Flutter/GeneratedPluginRegistrant.swift
 
 expo-env.d.ts
 # @end expo-cli
+# Local credentials
+.env
+.env.*
+!.env.example
+
+# Supabase
+/supabase/
