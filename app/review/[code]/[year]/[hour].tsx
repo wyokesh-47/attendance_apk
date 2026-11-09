@@ -92,6 +92,7 @@ export default function ReviewScreen() {
   const unmarked = students.length - Object.keys(attendance).length;
 
   function confirmSubmission() {
+    if (!receipt && (unmarked > 0 || error)) return;
     Alert.alert(
       receipt ? 'Already submitted' : 'Submit attendance?',
       receipt
@@ -144,6 +145,7 @@ export default function ReviewScreen() {
       <AppHeader title="Review attendance" onBack={() => router.back()} />
       <Page scroll style={styles.content}>
         <Text style={styles.title}>{getClassroomLabel(classroom)}</Text>
+        <Text style={styles.note}>Device-only review · Submitting here does not send attendance to Principal/HOD.</Text>
         <Text style={styles.subtitle}>
           {validHour} · {students.length} students
         </Text>
@@ -159,6 +161,21 @@ export default function ReviewScreen() {
           value={String(unmarked)}
           valueColor={unmarked === 0 ? colors.green : '#B54708'}
         />
+        {!receipt && unmarked > 0 ? (
+          <View style={styles.button}>
+            <Text style={styles.errorText} accessibilityRole="alert">
+              {students.length - unmarked} of {students.length} students marked.
+              Please mark the remaining {unmarked} before submitting.
+            </Text>
+            <PrimaryButton
+              label="Show unmarked students"
+              onPress={() => router.replace({
+                pathname: '/attendance/[code]/[year]/[hour]',
+                params: {code: classroom.department.code, year: String(classroom.year), hour: validHour, unmarked: '1'},
+              })}
+            />
+          </View>
+        ) : null}
         <Text style={styles.reviewHeading}>Student review</Text>
         <View style={styles.studentList}>
           {students.map((student) => (
@@ -173,7 +190,7 @@ export default function ReviewScreen() {
         <Text style={styles.note}>
           {receipt
             ? 'This attendance has already been submitted. Staff editing is locked.'
-            : 'Submitting saves a receipt on this device. Unmarked students remain unmarked.'}
+            : 'Mark every student before submitting. Your draft is saved on this device.'}
         </Text>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <View style={styles.button}>
@@ -181,7 +198,7 @@ export default function ReviewScreen() {
             icon={receipt ? 'receipt-text-outline' : 'cloud-check-outline'}
             label={receipt ? 'View submission receipt' : 'Submit attendance'}
             onPress={receipt ? openReceipt : confirmSubmission}
-            disabled={submitting}
+            disabled={submitting || (!receipt && (unmarked > 0 || Boolean(error)))}
             loading={submitting}
           />
         </View>

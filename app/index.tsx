@@ -19,20 +19,23 @@ import {
   BrandMark,
   colors,
 } from '@/components/ui';
-import { signInDemoStaff } from '@/services/demoAuth';
+import {useAuth} from '@/providers/AuthProvider';
 
 export default function LoginScreen() {
+  const {login, error: sessionError} = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function signIn() {
     setError('');
     setLoading(true);
     try {
-      await signInDemoStaff(email, password);
-      router.replace('/home');
+      if (!email.trim() || !password) throw new Error('Enter your email and password.');
+      const profile = await login(email, password);
+      router.replace(profile.role === 'staff' ? '/home' : '/management');
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Sign-in failed.');
     } finally {
@@ -58,7 +61,7 @@ export default function LoginScreen() {
             Sign in to manage today’s class attendance.
           </Text>
           <View style={styles.field}>
-            <FieldLabel>Staff email</FieldLabel>
+            <FieldLabel>Email address</FieldLabel>
             <View style={styles.inputWrap}>
               <MaterialCommunityIcons
                 name="email-outline"
@@ -66,7 +69,7 @@ export default function LoginScreen() {
                 color={colors.muted}
               />
               <AppTextInput
-                accessibilityLabel="Staff email"
+                accessibilityLabel="Email address"
                 autoCapitalize="none"
                 keyboardType="email-address"
                 onChangeText={setEmail}
@@ -90,19 +93,25 @@ export default function LoginScreen() {
                 autoCapitalize="none"
                 onChangeText={setPassword}
                 placeholder="Enter your password"
-                secureTextEntry
+                secureTextEntry={!showPassword}
                 value={password}
                 style={styles.inlineInput}
               />
+              <Pressable accessibilityRole="button" accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                onPress={() => setShowPassword((value) => !value)} style={{padding: 12}}>
+                <MaterialCommunityIcons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={colors.muted} />
+              </Pressable>
             </View>
           </View>
 
-          {error ? <ErrorMessage>{error}</ErrorMessage> : null}
-          <PrimaryButton
-            label="Sign in"
-            onPress={signIn}
-            loading={loading}
-          />
+          <View style={styles.actions}>
+            {error || sessionError ? <ErrorMessage>{error || sessionError}</ErrorMessage> : null}
+            <PrimaryButton
+              label="Sign in"
+              onPress={signIn}
+              loading={loading}
+            />
+          </View>
           <Pressable
             accessibilityRole="button"
             onPress={() => router.push('/register')}
@@ -120,7 +129,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   keyboardAvoiding: {flex: 1},
-  page: {flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24},
+  page: {flexGrow: 1, justifyContent: 'center', paddingHorizontal: 24, paddingTop: 40, paddingBottom: 32},
   content: {width: '100%', maxWidth: 430, alignSelf: 'center', gap: 0},
   title: {
     color: colors.ink,
@@ -129,8 +138,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
     marginTop: 28,
   },
-  subtitle: {color: colors.muted, fontSize: 15, marginTop: 8, marginBottom: 24},
-  field: {marginTop: 19},
+  subtitle: {color: colors.muted, fontSize: 15, lineHeight: 22, marginTop: 8, marginBottom: 8},
+  field: {marginTop: 20},
+  actions: {marginTop: 28, gap: 12},
   inputWrap: {
     minHeight: 54,
     paddingLeft: 15,
@@ -142,7 +152,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
   },
-  inlineInput: {flex: 1, minHeight: 50, borderWidth: 0, backgroundColor: 'transparent'},
-  linkButton: {alignItems: 'center', paddingVertical: 14, marginTop: 4},
-  linkText: {color: colors.green, fontSize: 14, fontWeight: '600'},
+  inlineInput: {flex: 1, minWidth: 0, minHeight: 54, paddingHorizontal: 12, borderWidth: 0, backgroundColor: 'transparent'},
+  linkButton: {alignItems: 'center', paddingVertical: 16, marginTop: 8},
+  linkText: {color: colors.green, fontSize: 14, lineHeight: 20, textAlign: 'center', fontWeight: '600'},
 });

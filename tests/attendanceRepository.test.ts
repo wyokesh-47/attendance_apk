@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getClassroom, getStudents } from '@/data/demoData';
 import {
   DuplicateSubmissionError,
+  IncompleteAttendanceError,
   getAttendance,
   getSubmission,
   markAllPresent,
@@ -85,13 +86,13 @@ describe('local demo attendance', () => {
 
   it('saves a receipt and permanently prevents edits or duplicate submission', async () => {
     const students = getStudents(classroom);
-    await setStudentStatus(classroom, hour, students[0]!.registerNumber, 'present');
+    await markAllPresent(classroom, hour);
     await setStudentStatus(classroom, hour, students[1]!.registerNumber, 'absent');
 
     const receipt = await submitAttendance(classroom, hour);
-    expect(receipt.present).toBe(1);
+    expect(receipt.present).toBe(students.length - 1);
     expect(receipt.absent).toBe(1);
-    expect(receipt.unmarked).toBe(students.length - 2);
+    expect(receipt.unmarked).toBe(0);
     expect(await getSubmission(classroom, hour)).toEqual(receipt);
 
     await expect(submitAttendance(classroom, hour))
@@ -101,13 +102,28 @@ describe('local demo attendance', () => {
     ).rejects.toBeInstanceOf(DuplicateSubmissionError);
     await expect(markAllPresent(classroom, hour))
       .rejects.toBeInstanceOf(DuplicateSubmissionError);
-    expect(await getAttendance(classroom, hour)).toEqual({
-      [students[0]!.registerNumber]: 'present',
-      [students[1]!.registerNumber]: 'absent',
-    });
+    const saved = await getAttendance(classroom, hour);
+    expect(Object.keys(saved)).toHaveLength(students.length);
+    expect(saved[students[0]!.registerNumber]).toBe('present');
+    expect(saved[students[1]!.registerNumber]).toBe('absent');
+  });
+
+  it('blocks empty and partially marked submissions while preserving the draft', async () => {
+    await expect(submitAttendance(classroom, hour)).rejects.toBeInstanceOf(IncompleteAttendanceError);
+    const students = getStudents(classroom);
+    for (const student of students.slice(1)) {
+      await setStudentStatus(classroom, hour, student.registerNumber, 'absent');
+    }
+    const draft = await getAttendance(classroom, hour);
+    await expect(submitAttendance(classroom, hour)).rejects.toMatchObject({unmarkedCount: 1});
+    expect(await getSubmission(classroom, hour)).toBeNull();
+    expect(await getAttendance(classroom, hour)).toEqual(draft);
+    await setStudentStatus(classroom, hour, students[0]!.registerNumber, 'od');
+    expect((await submitAttendance(classroom, hour)).unmarked).toBe(0);
   });
 
   it('serializes simultaneous submissions so only one receipt is created', async () => {
+    await markAllPresent(classroom, hour);
     const results = await Promise.allSettled([
       submitAttendance(classroom, hour),
       submitAttendance(classroom, hour),

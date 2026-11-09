@@ -6,33 +6,33 @@ import { Alert, StyleSheet, Text, View } from 'react-native';
 import {
   AppTextInput,
   AppHeader,
-  DemoBanner,
   ErrorMessage,
   FieldLabel,
   Page,
   PrimaryButton,
   colors,
 } from '@/components/ui';
-import { registerDemoStaff } from '@/services/demoAuth';
+import {register as registerAccount} from '@/services/cloud';
 
 export default function RegistrationScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   async function register() {
     setError('');
     if (!name.trim() || !email.includes('@')) {
-      setError('Enter your display name and a valid demo email.');
+      setError('Enter your display name and a valid email.');
       return;
     }
     setLoading(true);
     try {
-      await registerDemoStaff({name, email});
+      await registerAccount(name, email, password);
       Alert.alert(
-        'Demo registration submitted',
-        'This fictional staff profile is pending Principal approval. No password was saved.',
+        'Registration submitted',
+        'Confirm your email if requested, then wait for Principal approval before signing in.',
         [{text: 'Return to sign in', onPress: () => router.replace('/')}],
       );
     } catch (reason) {
@@ -48,9 +48,8 @@ export default function RegistrationScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>Create staff account</Text>
         <Text style={styles.subtitle}>
-          Set up a demo profile to explore the staff app.
+          Register your staff account for Principal approval.
         </Text>
-        <DemoBanner text="DEMO MODE · Fictional profile only" />
         <View style={styles.field}>
           <FieldLabel>Full name</FieldLabel>
           <View style={styles.inputWrap}>
@@ -63,7 +62,7 @@ export default function RegistrationScreen() {
               accessibilityLabel="Full name"
               autoCapitalize="words"
               onChangeText={setName}
-              placeholder="Your demo display name"
+              placeholder="Your full name"
               value={name}
               style={styles.inlineInput}
             />
@@ -88,17 +87,21 @@ export default function RegistrationScreen() {
             />
           </View>
         </View>
+        <View style={styles.field}>
+          <FieldLabel>Password</FieldLabel>
+          <AppTextInput accessibilityLabel="Password" secureTextEntry autoCapitalize="none"
+            placeholder="At least 8 characters" value={password} onChangeText={setPassword} />
+        </View>
         {error ? <ErrorMessage>{error}</ErrorMessage> : null}
         <View style={styles.action}>
           <PrimaryButton
-            label="Create demo account"
+            label="Create account"
             onPress={register}
             loading={loading}
           />
         </View>
         <Text style={styles.note}>
-          New staff registrations stay pending until Principal approval. This
-          prototype has no Principal dashboard or real authentication.
+          New staff registrations stay pending until Principal approval. You will receive access after approval and class assignment.
         </Text>
       </View>
     </Page>

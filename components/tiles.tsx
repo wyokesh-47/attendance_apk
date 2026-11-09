@@ -35,7 +35,7 @@ export function DepartmentTile({
       <View style={styles.departmentMeta}>
         <View style={styles.departmentIcon}>
           <MaterialCommunityIcons
-            name={departmentIcons[department.code]}
+            name={departmentIcons[department.code] ?? 'school-outline'}
             size={22}
             color={colors.green}
           />
@@ -156,7 +156,7 @@ export function StudentTile({
         <Text numberOfLines={1} style={styles.studentIdentifier}>
           {student.registerNumber}
         </Text>
-        <Text numberOfLines={1} style={styles.studentName}>
+        <Text numberOfLines={2} style={styles.studentName}>
           {student.name}
         </Text>
       </View>
@@ -166,7 +166,7 @@ export function StudentTile({
           {backgroundColor: `${statusColor}1A`},
         ]}
       >
-        <Text style={[styles.statusBadgeText, {color: statusColor}]}>
+        <Text numberOfLines={2} style={[styles.statusBadgeText, {color: statusColor}]}>
           {status ? statusLabels[status] : 'Unmarked'}
         </Text>
       </View>
@@ -258,7 +258,7 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
-  departmentMeta: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  departmentMeta: {flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 8},
   departmentArrow: {
     width: 30,
     height: 30,
@@ -276,7 +276,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   departmentTag: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     backgroundColor: colors.paleGreen,
     borderRadius: 20,
     paddingHorizontal: 9,
@@ -287,7 +287,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
   },
-  tileTitleRow: {flexDirection: 'row', alignItems: 'center', gap: 5},
+  tileTitleRow: {minHeight: 40, marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 8},
   departmentName: {
     flex: 1,
     color: colors.ink,
@@ -320,7 +320,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  selectionText: {flex: 1},
+  selectionText: {flex: 1, minWidth: 0},
   selectionTitle: {color: colors.ink, fontSize: 15, fontWeight: '700'},
   selectionSubtitle: {color: colors.muted, fontSize: 12, marginTop: 3},
   studentCard: {paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16},
@@ -347,10 +347,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   studentInfo: {flex: 1, minWidth: 0},
-  studentName: {color: colors.ink, fontSize: 13, fontWeight: '700', marginTop: 2},
+  studentName: {color: colors.ink, fontSize: 13, lineHeight: 18, fontWeight: '700', marginTop: 4},
   studentIdentifier: {color: colors.ink, fontSize: 10, fontWeight: '800'},
-  statusBadge: {paddingHorizontal: 8, paddingVertical: 6, borderRadius: 10},
-  statusBadgeText: {fontSize: 10, fontWeight: '700'},
+  statusBadge: {width: 84, minHeight: 34, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 6, borderRadius: 10},
+  statusBadgeText: {fontSize: 10, lineHeight: 14, textAlign: 'center', fontWeight: '700'},
   statusOption: {
     minHeight: 56,
     flexDirection: 'row',

@@ -15,6 +15,13 @@ export class DuplicateSubmissionError extends Error {
   }
 }
 
+export class IncompleteAttendanceError extends Error {
+  constructor(public readonly unmarkedCount: number) {
+    super(`Please mark the remaining ${unmarkedCount} student${unmarkedCount === 1 ? '' : 's'} before submitting.`);
+    this.name = 'IncompleteAttendanceError';
+  }
+}
+
 const storageKeys = {
   attendance: (classroom: Classroom, hour: string) =>
     `demo_attendance_${getStorageKey(classroom)}_${hour.replaceAll(' ', '_')}`,
@@ -219,6 +226,8 @@ export async function submitAttendance(
 
     const students = getStudents(classroom);
     const attendance = await getAttendance(classroom, hour);
+    const unmarked = students.filter((student) => !attendance[student.registerNumber]);
+    if (unmarked.length > 0) throw new IncompleteAttendanceError(unmarked.length);
     const values = Object.values(attendance);
     const count = (status: AttendanceStatus) =>
       values.filter((value) => value === status).length;

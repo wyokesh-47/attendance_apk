@@ -48,6 +48,7 @@ export default function AttendanceScreen() {
     code: string;
     year: string;
     hour: string;
+    unmarked?: string;
   }>();
   const classroom = resolveClassroom(params.code, params.year);
   const hour = Array.isArray(params.hour) ? params.hour[0] : params.hour;
@@ -60,6 +61,7 @@ export default function AttendanceScreen() {
   const [receipt, setReceipt] = useState<SubmissionReceipt | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<DemoStudent | null>(null);
   const [query, setQuery] = useState('');
+  const [onlyUnmarked, setOnlyUnmarked] = useState(params.unmarked === '1');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -96,8 +98,10 @@ export default function AttendanceScreen() {
   }, [classroom?.department.code, classroom?.year, validHour]);
 
   const filteredStudents = useMemo(
-    () => searchStudents(students, query),
-    [students, query],
+    () => searchStudents(students, query).filter(
+      (student) => !onlyUnmarked || !attendance[student.registerNumber],
+    ),
+    [students, query, onlyUnmarked, attendance],
   );
   const counts = statusCounts(attendance);
 
@@ -178,9 +182,16 @@ export default function AttendanceScreen() {
               </Text>
             </View>
             <StatusSummary counts={counts} />
+            <DemoBanner text="DEVICE ONLY · Saved on this phone, not shared with Principal/HOD" />
             {receipt ? (
               <DemoBanner text="SUBMITTED · Attendance is locked for editing" />
             ) : null}
+            <Pressable accessibilityRole="button" accessibilityState={{selected: onlyUnmarked}}
+              onPress={() => setOnlyUnmarked((value) => !value)}>
+              <Text style={styles.allPresentText}>
+                {onlyUnmarked ? 'Show all students' : 'Show unmarked students'}
+              </Text>
+            </Pressable>
             <View style={styles.searchRow}>
               <View style={styles.searchWrap}>
                 <MaterialCommunityIcons

@@ -1,123 +1,76 @@
 # Attendance
 
-A staff-only mobile prototype migrated from Flutter to React Native, Expo and
-TypeScript. It uses fictional demo records and local device storage only.
+One Expo / React Native / TypeScript app for Staff, HOD and Principal.
 
-## Run on an Android phone with Expo Go
+## Start on Android
 
-### One-time setup
-
-1. Install Node.js **24.3 or newer** (the current LTS release is recommended).
-   npm is included with Node.
-2. Install **Expo Go** from Google Play on the Android phone.
-3. Keep the laptop and phone on the same Wi-Fi network. Guest networks, VPNs,
-   or router client isolation can block local device connections.
-
-> **Tamil:** Laptop மற்றும் Android phone இரண்டும் ஒரே Wi-Fi-ல் இருக்கட்டும்.
-> Android phone-ல் Google Play வழியாக **Expo Go** install செய்யுங்கள்.
-> Node.js 24.3 அல்லது புதிய பதிப்பு laptop-ல் இருக்க வேண்டும்.
-
-### Install and start the preview
-
-In PowerShell, open the project folder and install dependencies:
+Use Node.js 24.3 or newer. In this directory:
 
 ```powershell
-cd D:\34\attendance_apk
-npm install
-```
-
-Start the Expo Go development server over the local network:
-
-```powershell
+npm ci
 npm run start:lan
 ```
 
-Expo prints a QR code and a development URL in the terminal. Open **Expo Go**
-on Android, choose **Scan QR code**, and scan the code shown in the laptop
-terminal. If Windows asks, allow Node.js access on **Private networks**. The
-phone and laptop must remain on the same Wi-Fi while previewing.
+Keep the phone and PC on the same Wi-Fi. Scan the terminal QR code with Expo Go.
+Restart with `npm run start:lan -- --clear` after changing environment settings.
 
-> **Tamil:** PowerShell-ல் `npm install` ஒருமுறை run செய்யுங்கள். ஒவ்வொரு முறை
-> preview தொடங்கும்போதும் `npm run start:lan` run செய்யுங்கள். Terminal-ல் வரும்
-> QR code-ஐ Expo Go-வில் scan செய்யுங்கள். Firewall கேள்வி வந்தால் **Private
-> networks**-க்கு மட்டும் அனுமதி கொடுங்கள்.
+## Environment
 
-### Restart after shutting down the laptop
+The ignored local `.env` needs `EXPO_PUBLIC_SUPABASE_URL` and
+`EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` for the selected project. Never put a
+personal access token, database password or service-role key in a public variable.
 
-1. Reconnect both devices to the same Wi-Fi.
-2. Open PowerShell in `D:\34\attendance_apk`.
-3. Run `npm run start:lan` and scan the newly displayed QR code in Expo Go.
+## Database setup
 
-Keep the terminal open while using the app. Save a `.ts` or `.tsx` file to
-preview UI changes with Expo Fast Refresh. Press `Ctrl+C` in the terminal to
-stop the server.
+See [supabase/README.md](supabase/README.md). Fresh projects run `schema.sql`.
+Projects with the earlier schema run `management_update.sql` once. Do not rerun
+an initial schema on an existing database. Set up actual academic years, classes,
+students and enrollments separately. Phone-only prototype records are not uploaded
+or treated as college records automatically.
 
-If the QR code cannot connect, check Windows Firewall, confirm both devices
-are on the same non-guest network, and turn off a VPN temporarily. The
-development URL is local to the current network and can change when the server
-restarts. No Flutter Web preview, Android Studio, Android SDK, or APK build is
-needed for this workflow.
+## App flow
 
-## Demo sign-in and functionality
+- Shared Supabase login loads the protected database role; no role selector at login.
+- The original blue banner and department card grid are shared across dashboards.
+  Every approved user can browse department names. Principal sees all class data;
+  HOD sees data for assigned departments. Staff teaching assignments can span
+  departments: an AIML staff member can be assigned BCA programming classes.
+- Tap a department card, choose its year/class, then open its student members.
+  Shared classes open cloud attendance. Unlinked classes retain the old read-only
+  roster preview, including the 55 provided BCA Second Year members. Generated
+  rosters in other old classes are clearly labelled as samples. Staff can use the
+  restored device-only marking, review and receipt flow from these saved rosters;
+  these local submissions are not shared with management. Select a date/hour in a shared class. Counts show Students,
+  Present, Absent, OD, Informed Leave and Unmarked for that exact session.
+- Staff start today's attendance, mark individual students or All Present, and submit.
+  Submission is blocked until everyone is marked. Drafts are saved on the server.
+- Submitted records are locked for Staff. Principal/scoped HOD can correct them with
+  a reason; database version checks prevent silently overwriting another edit.
+- Staff may request corrections after submission. Management can correct submitted
+  records directly; a dedicated request-review inbox is not yet provided in the UI.
+- Permanent correction history appears in the class view. Dashboards and class views
+  refresh on focus and periodically while visible; there is no offline write queue.
+- Principal sees account emails/roles, chooses Staff or HOD during approval, and
+  assigns an initial class/department in the same transaction. Additional assignments
+  can be added for approved Staff/HOD accounts.
 
-The sign-in screen is pre-filled with the approved fictional demo account:
-
-- Email: `staff@demo.edu`
-- Password: `demo1234`
-
-New staff registrations are stored locally as pending approval. This prototype
-has no Principal dashboard or real authentication, so new registrations cannot
-be approved in-app.
-
-The app includes:
-
-- Seven departments: B.C.A, B.Sc. CS, B.Sc. AIML, B.B.A, M.B.A, B.Com, and
-  B.Com CA.
-- First, Second, and Third Year for each department (21 classes).
-- A deterministic fictional roster of 45–65 students per class; names begin
-  with `Demo`, and register numbers contain `DEMO`.
-- Five attendance hours, student search, and Present, Absent, OD, and Informed
-  Leave statuses.
-- Mark All Present, attendance review, simulated local submission receipts,
-  submitted-record edit locking, and duplicate-submission protection.
-- Staff profile and local demo registration.
-
-Attendance and receipts are saved locally with AsyncStorage. They are not
-college records and are not sent to a server. No real student data, Excel
-imports, reports, production authentication, or Supabase integration is used.
-
-## Development checks
+## Checks
 
 ```powershell
 npm run typecheck
 npm test
-npx expo install --check
-npx expo-doctor
 ```
 
-## Project map
+SQL must also be executed and verified in the target Supabase project, including
+RLS and concurrent-write tests described in `supabase/README.md`.
 
-- `app/` — Expo Router screens and navigation
-- `components/` — shared UI and reusable tiles
-- `data/` — departments, class rosters, and fictional student generator
-- `services/` — demo authentication and local attendance repository
-- `types/` — attendance, classroom, receipt, and profile types
-- `tests/` — demo-data, authentication, and attendance behavior checks
-- `legacy_flutter_backup/` — preserved pre-migration Flutter project snapshot
+## Source map
 
-The original Flutter files and the existing Android preview script remain in
-the workspace. The backup was copied before the Expo migration; do not delete
-it if the Flutter implementation may be needed later.
-
-## Future scope — not implemented
-
-The following requirements remain documented for a later management phase:
-
-- Separate HOD and Principal dashboards, department-wise monitoring, live
-  summaries, hour-wise reports, and pending staff submission lists.
-- Management-only attendance editing and a management edit history visible for
-  24 hours.
-- Excel student-data import and Supabase integration.
-
-This phase intentionally does not implement these management features or
-generate real college reports.
+- `app/`: login, registration, profile, role dashboards and shared class attendance.
+- `components/AttendanceDashboard.tsx`: department/class drill-down and account roles.
+- `components/ApprovalSheet.tsx`: Staff/HOD approval and access assignment.
+- `services/managementRepository.ts`: cloud reads, counts and attendance mutations.
+- `services/cloud.ts`: authenticated Supabase HTTP transport and session persistence.
+- `providers/`: authentication state; `supabase/`: SQL setup and updates.
+- Local marking routes are available to approved Staff via the saved roster screen
+  and clearly labelled device-only. Shared classes use the cloud marking/review flow.

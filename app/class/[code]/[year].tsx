@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { HourTile } from '@/components/tiles';
-import { AppHeader, Page, colors } from '@/components/ui';
+import { AppCard, AppHeader, Page, colors } from '@/components/ui';
 import { getStudents, HOURS, getClassroomLabel } from '@/data/demoData';
 import { resolveClassroom } from '@/navigation/routeParams';
 import {
@@ -28,6 +28,9 @@ export default function HourSelectionScreen() {
     <View style={styles.screen}>
       <AppHeader title="Select an hour" onBack={() => router.back()} />
       <Page scroll>
+        <AppCard style={{padding: 16, marginTop: 12, marginBottom: 16, backgroundColor: colors.paleGreen}}>
+          <Text style={styles.subtitle}>Device-only marking · These drafts and submissions are saved on this phone, not shared with Principal/HOD.</Text>
+        </AppCard>
         <Text style={styles.title}>{getClassroomLabel(classroom)}</Text>
         <Text style={styles.subtitle}>
           {students.length} students · Choose one of five hours

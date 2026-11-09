@@ -281,7 +281,7 @@ export function StatusSummary({
             {counts[status]}
           </Text>
           <Text
-            numberOfLines={1}
+            numberOfLines={2}
             style={[styles.summaryLabel, {color: statusColors[status]}]}
           >
             {statusLabels[status]}
@@ -386,7 +386,7 @@ const styles = StyleSheet.create({
   appHeaderSafeArea: {backgroundColor: colors.background},
   headerTitleRow: {flexDirection: 'row', alignItems: 'center', flex: 1},
   backButton: {padding: 4, marginRight: 15},
-  headerTitle: {fontSize: 19, fontWeight: '600', color: colors.ink},
+  headerTitle: {flex: 1, fontSize: 19, lineHeight: 25, fontWeight: '600', color: colors.ink},
   headerSpacer: {width: 36},
   profileButton: {
     width: 36,
@@ -415,6 +415,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   card: {
+    padding: 16,
     backgroundColor: colors.white,
     borderRadius: 20,
     borderColor: colors.line,
@@ -430,10 +431,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     paddingHorizontal: 16,
+    paddingVertical: 14,
     gap: 9,
   },
   disabledButton: {opacity: 0.55},
-  primaryButtonText: {color: colors.white, fontSize: 15, fontWeight: '700'},
+  primaryButtonText: {flexShrink: 1, textAlign: 'center', color: colors.white, fontSize: 15, lineHeight: 22, fontWeight: '700'},
   fieldLabel: {
     color: colors.ink,
     fontSize: 13,
@@ -449,6 +451,9 @@ const styles = StyleSheet.create({
     color: colors.ink,
     fontSize: 15,
     paddingHorizontal: 16,
+    paddingVertical: 12,
+    textAlignVertical: 'center',
+    includeFontPadding: false,
   },
   sectionTitle: {
     color: colors.ink,
@@ -458,7 +463,7 @@ const styles = StyleSheet.create({
   summaryRow: {flexDirection: 'row', gap: 6},
   summaryChip: {
     flex: 1,
-    minHeight: 60,
+    minHeight: 76,
     paddingHorizontal: 3,
     paddingVertical: 8,
     alignItems: 'center',
@@ -466,15 +471,15 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   summaryNumber: {fontSize: 16, fontWeight: '800'},
-  summaryLabel: {fontSize: 9, marginTop: 2},
+  summaryLabel: {fontSize: 10, lineHeight: 14, minHeight: 28, textAlign: 'center', marginTop: 4},
   summaryLine: {
     minHeight: 36,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  summaryLineLabel: {color: colors.muted, fontSize: 14},
-  summaryLineValue: {fontWeight: '700', fontSize: 14},
+  summaryLineLabel: {flex: 1, paddingRight: 12, color: colors.muted, fontSize: 14, lineHeight: 20},
+  summaryLineValue: {flexShrink: 1, textAlign: 'right', fontWeight: '700', fontSize: 14, lineHeight: 20},
   errorText: {
     color: '#B42318',
     fontSize: 13,
