@@ -13,6 +13,149 @@ export const DEPARTMENTS: Department[] = [
 export const STUDY_YEARS = ['First Year', 'Second Year', 'Third Year'];
 export const HOURS = ['Hour 1', 'Hour 2', 'Hour 3', 'Hour 4', 'Hour 5'];
 
+export type HourSchedule = {
+  hour: string;
+  period: string;
+  startHour: number;
+  startMinute: number;
+  endHour: number;
+  endMinute: number;
+  time: string;
+};
+
+export const HOUR_SCHEDULES: Record<string, HourSchedule> = {
+  'Hour 1': {
+    hour: 'Hour 1',
+    period: 'Period I',
+    startHour: 9,
+    startMinute: 0,
+    endHour: 9,
+    endMinute: 50,
+    time: '9:00 AM – 9:50 AM',
+  },
+  'Hour 2': {
+    hour: 'Hour 2',
+    period: 'Period II',
+    startHour: 9,
+    startMinute: 50,
+    endHour: 10,
+    endMinute: 40,
+    time: '9:50 AM – 10:40 AM',
+  },
+  'Hour 3': {
+    hour: 'Hour 3',
+    period: 'Period III',
+    startHour: 11,
+    startMinute: 0,
+    endHour: 11,
+    endMinute: 50,
+    time: '11:00 AM – 11:50 AM',
+  },
+  'Hour 4': {
+    hour: 'Hour 4',
+    period: 'Period IV',
+    startHour: 11,
+    startMinute: 50,
+    endHour: 12,
+    endMinute: 40,
+    time: '11:50 AM – 12:40 PM',
+  },
+  'Hour 5': {
+    hour: 'Hour 5',
+    period: 'Period V',
+    startHour: 12,
+    startMinute: 40,
+    endHour: 13,
+    endMinute: 30,
+    time: '12:40 PM – 1:30 PM',
+  },
+};
+
+export type HourTimingStatus = {
+  schedule: HourSchedule;
+  isExpired: boolean;
+  isActive: boolean;
+  isUpcoming: boolean;
+  timeLabel: string;
+};
+
+export function getHourTimingStatus(hour: string, now: Date = new Date()): HourTimingStatus | null {
+  const schedule = HOUR_SCHEDULES[hour];
+  if (!schedule) return null;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  const startMinutes = schedule.startHour * 60 + schedule.startMinute;
+  const endMinutes = schedule.endHour * 60 + schedule.endMinute;
+
+  const isExpired = currentMinutes >= endMinutes;
+  const isActive = currentMinutes >= startMinutes && currentMinutes < endMinutes;
+  const isUpcoming = currentMinutes < startMinutes;
+
+  return {
+    schedule,
+    isExpired,
+    isActive,
+    isUpcoming,
+    timeLabel: schedule.time,
+  };
+}
+
+export function getCurrentActivePeriod(now: Date = new Date()): {
+  label: string;
+  hour: string | null;
+  status: 'active' | 'break' | 'before' | 'after';
+} {
+  const currentMinutes = now.getHours() * 60 + now.getMinutes();
+  for (const hour of HOURS) {
+    const s = HOUR_SCHEDULES[hour];
+    const start = s.startHour * 60 + s.startMinute;
+    const end = s.endHour * 60 + s.endMinute;
+    if (currentMinutes >= start && currentMinutes < end) {
+      return {
+        label: `${s.period} (${s.hour}) Active`,
+        hour,
+        status: 'active',
+      };
+    }
+  }
+  if (currentMinutes >= 10 * 60 + 40 && currentMinutes < 11 * 60) {
+    return {
+      label: 'Tea Break (10:40 AM – 11:00 AM)',
+      hour: null,
+      status: 'break',
+    };
+  }
+  if (currentMinutes < 9 * 60) {
+    return {
+      label: 'College starts at 9:00 AM',
+      hour: null,
+      status: 'before',
+    };
+  }
+  return {
+    label: 'College hours ended for today',
+    hour: null,
+    status: 'after',
+  };
+}
+
+export function formatLiveDate(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(now);
+}
+
+export function formatLiveTime(now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(now);
+}
+
 export const ATTENDANCE_STATUSES = [
   { value: 'present', label: 'Present' },
   { value: 'absent', label: 'Absent' },
@@ -20,63 +163,16 @@ export const ATTENDANCE_STATUSES = [
   { value: 'informed_leave', label: 'Informed Leave' },
 ] as const;
 
-const bcaSecondYearStudents: DemoStudent[] = [
-  {registerNumber: '25054610500111001', name: 'ARAVIND S'},
-  {registerNumber: '25054610500111002', name: 'ARUN P'},
-  {registerNumber: '25054610500111003', name: 'BHARANI D'},
-  {registerNumber: '25054610500111004', name: 'DANIEL RAJ R S'},
-  {registerNumber: '25054610500111005', name: 'DHARANI KUMAR S'},
-  {registerNumber: '25054610500111006', name: 'FAIZAL K'},
-  {registerNumber: '25054610500111007', name: 'JEYAKANTHAN S'},
-  {registerNumber: '25054610500111008', name: 'JITHIN MATHEW V'},
-  {registerNumber: '25054610500111009', name: 'KARTHICK K'},
-  {registerNumber: '25054610500111010', name: 'KARTHICK RAJA K'},
-  {registerNumber: '25054610500111011', name: 'MANOJ V'},
-  {registerNumber: '25054610500111012', name: 'MUGESH K'},
-  {registerNumber: '25054610500111013', name: 'MUGIL M'},
-  {registerNumber: '25054610500111014', name: 'NITHISH B'},
-  {registerNumber: '25054610500111015', name: 'NOVAS JONE I'},
-  {registerNumber: '25054610500111016', name: 'PIRATHISH S'},
-  {registerNumber: '25054610500111017', name: 'PRADHAP P'},
-  {registerNumber: '25054610500111018', name: 'PRATHEEPREMO G'},
-  {registerNumber: '25054610500111019', name: 'PRIYA DHARSHAN S'},
-  {registerNumber: '25054610500111020', name: 'RAMASAMY G'},
-  {registerNumber: '25054610500111021', name: 'SABARESHWARAM M'},
-  {registerNumber: '25054610500111022', name: 'SAKTHI S'},
-  {registerNumber: '25054610500111023', name: 'SANJAY MOHAN'},
-  {registerNumber: '25054610500111024', name: 'SARAVANAKUMAR D'},
-  {registerNumber: '25054610500111025', name: 'SATHISH K'},
-  {registerNumber: '25054610500111026', name: 'SUBASH S'},
-  {registerNumber: '25054610500111027', name: 'SURENDRAN V'},
-  {registerNumber: '25054610500111028', name: 'THIRUMALAI SELVAN E'},
-  {registerNumber: '25054610500111029', name: 'THIRUMURUGAN D'},
-  {registerNumber: '25054610500111030', name: 'THIRUPUGAL R'},
-  {registerNumber: '25054610500111031', name: 'THIRUSAKTHI S'},
-  {registerNumber: '25054610500111032', name: 'VISHNU H'},
-  {registerNumber: '25054610500111033', name: 'VISHNU P'},
-  {registerNumber: '25054610500111034', name: 'YOGESHWARAN C'},
-  {registerNumber: '25054610500111035', name: 'YOGESHWARAN R'},
-  {registerNumber: '25054610500111036', name: 'YOGESHWAR M'},
-  {registerNumber: '25054610500111037', name: 'YOGESWARAN S'},
-  {registerNumber: '25054610500112038', name: 'ANANTHI S'},
-  {registerNumber: '25054610500112039', name: 'ANUSRI M'},
-  {registerNumber: '25054610500112040', name: 'ASHWINI D'},
-  {registerNumber: '25054610500112041', name: 'BAVADHARANI M'},
-  {registerNumber: '25054610500112042', name: 'HARINISHRI R'},
-  {registerNumber: '25054610500112043', name: 'JANANI M'},
-  {registerNumber: '25054610500112044', name: 'KAVIPRIYA D'},
-  {registerNumber: '25054610500112045', name: 'MUMTAJ K'},
-  {registerNumber: '25054610500112046', name: 'NIHARIGA B'},
-  {registerNumber: '25054610500112047', name: 'SABEEHA BANU S'},
-  {registerNumber: '25054610500112048', name: 'SAFRINA J'},
-  {registerNumber: '25054610500112049', name: 'SAVITHA S'},
-  {registerNumber: '25054610500112050', name: 'SRINITHI D'},
-  {registerNumber: '25054610500112051', name: 'SRINITHI M S'},
-  {registerNumber: '25054610500112052', name: 'SUJATHA B'},
-  {registerNumber: '25054610500112053', name: 'SUPRIYA B'},
-  {registerNumber: '25054610500112054', name: 'YOGETHA R'},
-  {registerNumber: '25054610500112055', name: 'YUVASREE P'},
-];
+const bcaSecondYearStudents: DemoStudent[] = Array.from(
+  {length: 55},
+  (_, index) => {
+    const number = String(index + 1).padStart(3, '0');
+    return {
+      registerNumber: `DEMO-BCA2-${number}`,
+      name: `Demo Student ${number}`,
+    };
+  },
+);
 
 const firstNames = [
   'Aven', 'Mira', 'Kian', 'Liora', 'Riven', 'Sena', 'Niko', 'Tavi',

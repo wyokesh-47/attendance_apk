@@ -5,10 +5,10 @@ import {AppTextInput, ErrorMessage, FieldLabel, PrimaryButton, colors} from './u
 import {SelectionChip} from './ManagementControls';
 import {approveWithAccess} from '@/services/managementRepository';
 import {rpc} from '@/services/cloud';
-import type {CloudClass, CloudDepartment, ManagedAccount} from '@/types/management';
+import type {CloudDepartment, ManagedAccount} from '@/types/management';
 
-export function ApprovalSheet({account, departments, classes, onClose, onApproved}: {
-  account: ManagedAccount | null; departments: CloudDepartment[]; classes: CloudClass[];
+export function ApprovalSheet({account, departments, onClose, onApproved}: {
+  account: ManagedAccount | null; departments: CloudDepartment[];
   onClose: () => void; onApproved: () => void;
 }) {
   const [role, setRole] = useState<'staff' | 'hod'>('staff');
@@ -22,7 +22,7 @@ export function ApprovalSheet({account, departments, classes, onClose, onApprove
     if (!account || busy) return;
     setBusy(true); setError('');
     try {
-      if (pending) await approveWithAccess(account.id, role, target);
+      if (pending) await approveWithAccess(account.id, role, role === 'hod' ? target : undefined);
       else {
         if (!target || account.approval_status !== 'approved' || !['staff','hod'].includes(account.role)) throw new Error('Select access for an approved Staff or HOD account.');
         await rpc('assign_access', {p_user: account.id, p_class: account.role === 'staff' ? target : null,
@@ -33,8 +33,7 @@ export function ApprovalSheet({account, departments, classes, onClose, onApprove
     catch (reason) {setError(reason instanceof Error ? reason.message : 'Could not approve this account.');}
     finally {setBusy(false);}
   }
-  const options = (role === 'hod' ? departments.map((item) => ({id: item.id, label: item.name})) :
-    classes.map((item) => ({id: item.id, label: `${item.departments.name} · Year ${item.study_year} · ${item.section}`})))
+  const options = departments.map((item) => ({id: item.id, label: item.name}))
     .filter((item) => item.label.toLowerCase().includes(search.trim().toLowerCase()));
   return <Modal visible={Boolean(account)} animationType="slide" onRequestClose={() => {if (!busy) onClose();}}>
     <SafeAreaView style={styles.safe}>
@@ -47,14 +46,16 @@ export function ApprovalSheet({account, departments, classes, onClose, onApprove
           <FieldLabel>Grant access as</FieldLabel>
           <View style={styles.wrap}>{(['staff','hod'] as const).map((value) => <SelectionChip key={value} label={value === 'hod' ? 'HOD' : 'Staff'} selected={role === value} disabled={busy || !pending}
             onPress={() => {setRole(value); setTarget(''); setError('');}} />)}</View>
-          <FieldLabel>{role === 'hod' ? 'Assign a department' : 'Assign an initial class'}</FieldLabel>
-          <AppTextInput value={search} onChangeText={setSearch} placeholder={role === 'hod' ? 'Search departments' : 'Search current-year classes'} editable={!busy} />
-          <View style={styles.options}>{options.map((item) => <SelectionChip key={item.id} label={item.label} selected={target === item.id} disabled={busy}
-            onPress={() => setTarget(item.id)} />)}</View>
-          {!options.length ? <Text style={styles.note}>{role === 'hod' ? 'No matching departments.' : 'No matching current-year classes. Set up the academic year and classes first.'}</Text> : null}
-          <Text style={styles.note}>{role === 'hod' ? 'The HOD can view and correct attendance only in the assigned department.' : 'Staff can mark attendance for the assigned class. Submitted records are locked.'}</Text>
+          {role === 'hod' ? <>
+            <FieldLabel>Assign a department</FieldLabel>
+            <AppTextInput value={search} onChangeText={setSearch} placeholder="Search departments" editable={!busy} />
+            <View style={styles.options}>{options.map((item) => <SelectionChip key={item.id} label={item.label} selected={target === item.id} disabled={busy}
+              onPress={() => setTarget(item.id)} />)}</View>
+            {!options.length ? <Text style={styles.note}>No matching departments.</Text> : null}
+            <Text style={styles.note}>The HOD can view and correct attendance only in the assigned department.</Text>
+          </> : <Text style={styles.note}>Staff approval automatically enables the existing BCA Second Year · Section A shared attendance class.</Text>}
           {error ? <ErrorMessage>{error}</ErrorMessage> : null}
-          <PrimaryButton label={pending ? `Approve as ${role === 'hod' ? 'HOD' : 'Staff'}` : 'Save access assignment'} onPress={() => void approve()} disabled={!target || busy} loading={busy} />
+          <PrimaryButton label={pending ? `Approve as ${role === 'hod' ? 'HOD' : 'Staff'}` : 'Save access assignment'} onPress={() => void approve()} disabled={(role === 'hod' && !target) || busy} loading={busy} />
           <SelectionChip label="Cancel" selected={false} onPress={onClose} disabled={busy} />
         </ScrollView>
       </KeyboardAvoidingView>

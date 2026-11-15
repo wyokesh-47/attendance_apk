@@ -1,7 +1,8 @@
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -22,25 +23,41 @@ import {
 import {useAuth} from '@/providers/AuthProvider';
 
 export default function LoginScreen() {
-  const {login, error: sessionError} = useAuth();
+  const {profile, loading: authLoading, login, error: sessionError} = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
+  useEffect(() => {
+    if (!authLoading && profile) {
+      router.replace((profile.role === 'staff' ? '/home' : '/management') as any);
+    }
+  }, [profile, authLoading]);
+
   async function signIn() {
     setError('');
     setLoading(true);
     try {
       if (!email.trim() || !password) throw new Error('Enter your email and password.');
-      const profile = await login(email, password);
-      router.replace(profile.role === 'staff' ? '/home' : '/management');
+      const userProfile = await login(email, password);
+      router.replace((userProfile.role === 'staff' ? '/home' : '/management') as any);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Sign-in failed.');
     } finally {
       setLoading(false);
     }
+  }
+
+  if (authLoading) {
+    return (
+      <View style={{flex: 1, alignItems: 'center', justifyContent: 'center', gap: 20, backgroundColor: colors.background}}>
+        <BrandMark large />
+        <ActivityIndicator color={colors.green} />
+        <Text style={{color: colors.muted}}>Loading your account…</Text>
+      </View>
+    );
   }
 
   return (

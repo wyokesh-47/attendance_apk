@@ -10,6 +10,7 @@ import {
   View,
   type ScrollViewInstance,
   type ScrollViewProps,
+  type StyleProp,
   type TextInputProps,
   type ViewStyle,
 } from 'react-native';
@@ -178,7 +179,7 @@ export function AppCard({
 }: {
   children: ReactNode;
   onPress?: () => void;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   accessibilityLabel?: string;
 }) {
   if (onPress) {

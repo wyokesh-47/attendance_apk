@@ -7,8 +7,25 @@
     "orientation": "portrait",
     "userInterfaceStyle": "light",
     "icon": "./assets/attendance-logo.png",
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/attendance-logo.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "package": "com.yokesh_27.acadenceattendance"
+    },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/attendance-logo.png",
+          "imageWidth": 200,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF"
+        }
+      ],
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

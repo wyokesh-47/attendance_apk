@@ -5,11 +5,18 @@ import {AppCard, AppHeader, ErrorMessage, Page, PrimaryButton, colors} from '@/c
 import {YearTile} from '@/components/tiles';
 import {DEPARTMENTS, STUDY_YEARS, getStudents} from '@/data/demoData';
 import {collegeToday, getDashboard} from '@/services/managementRepository';
+import {useAuth} from '@/providers/AuthProvider';
 import type {DashboardData} from '@/types/management';
+import {getVisibleStudyYears, isStaffBcaDemo} from '@/navigation/routeParams';
+
+const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
 
 export default function DepartmentMembersScreen() {
-  const params = useLocalSearchParams<{code: string}>();
-  const code = Array.isArray(params.code) ? params.code[0] : params.code;
+  const params = useLocalSearchParams<{code: string; date?: string; hour?: string}>();
+  const {profile} = useAuth();
+  const code = first(params.code);
+  const selectedDate = first(params.date) ?? collegeToday();
+  const selectedHour = Number(first(params.hour) ?? 1);
   const department = DEPARTMENTS.find((item) => item.code === code);
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,15 +25,17 @@ export default function DepartmentMembersScreen() {
   const load = useCallback(async () => {
     const request = ++sequence.current;
     setLoading(true); setError('');
-    try {const result = await getDashboard(collegeToday(), 1, false); if (sequence.current === request) setData(result);}
+    try {const result = await getDashboard(selectedDate, selectedHour, false); if (sequence.current === request) setData(result);}
     catch (failure) {if (sequence.current === request) {setData(null); setError(failure instanceof Error ? failure.message : 'Could not load shared classes.');}}
     finally {if (sequence.current === request) setLoading(false);}
-  }, [code]);
+  }, [code, selectedDate, selectedHour]);
   useFocusEffect(useCallback(() => {void load(); return () => {sequence.current++;};}, [load]));
   const cloudDepartment = data?.departments.find((item) => item.code === code);
   const resolved = department ?? (cloudDepartment ? {...cloudDepartment, abbreviation: cloudDepartment.code} : null);
   const classes = data?.classes.filter((item) => item.departments.code === code) ?? [];
-  const years = [...new Set([1, 2, 3, ...classes.map((item) => item.study_year)])].sort((a, b) => a - b);
+  const staffBcaDemo = isStaffBcaDemo(code, profile?.role);
+  const years = getVisibleStudyYears(classes.map((item) => item.study_year));
+  const staffBcaClass = classes.find((item) => item.study_year === 2 && item.section === 'A');
   return <View style={styles.screen}>
     <AppHeader title={resolved?.name ?? code ?? 'Department'} onBack={() => router.back()} />
     <Page scroll safeAreaEdges={['left','right','bottom']} style={styles.content}>
@@ -36,21 +45,39 @@ export default function DepartmentMembersScreen() {
       {error ? <ErrorMessage>{error}</ErrorMessage> : null}
       {!loading && resolved ? years.map((year) => {
         const linked = classes.filter((item) => item.study_year === year);
+        if (staffBcaDemo && year === 2) return staffBcaClass && department ? <YearTile key={year}
+          classroom={{department, year: 2}}
+          count={data?.enrollmentCounts[staffBcaClass.id] ?? 0}
+          onPress={() => router.push({pathname: '/class/[code]/[year]', params: {
+            code: 'BCA', year: '2', classId: staffBcaClass.id, date: selectedDate,
+          }})}
+        /> : <AppCard key={year} style={styles.classCard}>
+          <Text style={styles.heading}>Second Year</Text>
+          <Text style={styles.text}>The shared Second Year class is unavailable. Ask the Principal to approve your Staff account.</Text>
+        </AppCard>;
         if (linked.length) return <View key={year} style={styles.group}>
           <Text style={styles.heading}>{STUDY_YEARS[year - 1] ?? `Year ${year}`}</Text>
-          {linked.map((classroom) => <AppCard key={classroom.id} style={styles.classCard} onPress={() => router.push({pathname: '/class-attendance',
-            params: {classId: classroom.id, date: collegeToday(), hour: '1'}})}>
+          {linked.map((classroom) => <AppCard key={classroom.id} style={styles.classCard} onPress={() => code === 'BCA' && year === 2 && profile?.role === 'staff'
+            ? router.push({pathname: '/class/[code]/[year]', params: {code: 'BCA', year: '2', classId: classroom.id, date: selectedDate}})
+            : router.push({pathname: '/class-attendance' as any, params: {classId: classroom.id, date: selectedDate, hour: String(selectedHour)}})}>
             <Text style={styles.heading}>Section {classroom.section}</Text>
             <Text style={styles.text}>{data?.enrollmentCounts[classroom.id] ?? 0} student members</Text>
-            <Text style={styles.link}>Open members and attendance</Text>
+            {code === 'BCA' && year === 2 && !data?.enrollmentCounts[classroom.id] ?
+              <Text style={styles.preview}>The shared student roster is unavailable, so attendance cannot be submitted.</Text> : null}
+            <Text style={styles.link}>Open {selectedDate} · Hour {selectedHour} attendance</Text>
           </AppCard>)}
-          {department && year <= 3 && linked.every((item) => !data?.enrollmentCounts[item.id]) ?
-            <PrimaryButton label="View saved roster preview" onPress={() => router.push({pathname: '/members', params: {code: department.code, year: String(year)}})} /> : null}
+          {(code !== 'BCA' || year !== 2) && department && year <= 3 &&
+            linked.every((item) => !data?.enrollmentCounts[item.id]) ?
+              <PrimaryButton label="View saved roster preview" onPress={() => router.push({pathname: '/members' as any, params: {code: department.code, year: String(year)}})} /> : null}
         </View>;
         if (!department || year > 3) return null;
+        if (code === 'BCA' && year === 2) return <AppCard key={year} style={styles.classCard}>
+          <Text style={styles.heading}>Shared class not available</Text>
+          <Text style={styles.text}>BCA Second Year · Section A attendance is available only through the shared cloud class. Ask the Principal to approve your Staff account; access is granted automatically.</Text>
+        </AppCard>;
         const classroom = {department, year};
         return <View key={year} style={styles.group}>
-          <YearTile classroom={classroom} count={getStudents(classroom).length} onPress={() => router.push({pathname: '/members', params: {code: department.code, year: String(year)}})} />
+          <YearTile classroom={classroom} count={getStudents(classroom).length} onPress={() => router.push({pathname: '/members' as any, params: {code: department.code, year: String(year)}})} />
           <Text style={styles.preview}>Saved roster preview · No shared class linked to this account</Text>
         </View>;
       }) : null}

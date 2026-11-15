@@ -3,11 +3,29 @@ import {describe, expect, it} from '@jest/globals';
 import {
   DEPARTMENTS,
   HOURS,
+  HOUR_SCHEDULES,
   STUDY_YEARS,
+  formatLiveDate,
+  formatLiveTime,
+  getCurrentActivePeriod,
   getClassroom,
+  getHourTimingStatus,
   getStudents,
   searchStudents,
 } from '@/data/demoData';
+import {getVisibleStudyYears, isStaffBcaDemo} from '@/navigation/routeParams';
+
+describe('Staff BCA demo navigation', () => {
+  it('keeps all three year choices and identifies the direct BCA Staff class route', () => {
+    expect(isStaffBcaDemo('BCA', 'staff')).toBe(true);
+    expect(getVisibleStudyYears([2])).toEqual([1, 2, 3]);
+  });
+
+  it('preserves the direct-class routing restriction to BCA Staff only', () => {
+    expect(isStaffBcaDemo('BBA', 'staff')).toBe(false);
+    expect(isStaffBcaDemo('BCA', 'principal')).toBe(false);
+  });
+});
 
 describe('class rosters', () => {
   it('keeps generated records for classes other than BCA Second Year', () => {
@@ -36,41 +54,24 @@ describe('class rosters', () => {
     expect(classCounts.size).toBeGreaterThan(1);
   });
 
-  it('returns the 55 provided BCA Second Year students without duplicates or demo records', () => {
+  it('returns 55 anonymized BCA Second Year demo students without duplicates', () => {
     const students = getStudents(getClassroom('BCA', 2)!);
     const registerNumbers = students.map((student) => student.registerNumber);
 
     expect(students).toHaveLength(55);
     expect(new Set(registerNumbers).size).toBe(55);
-    expect(students.every((student) => !student.name.startsWith('Demo ')))
-      .toBe(true);
-    expect(students.every((student) => !student.registerNumber.includes('DEMO')))
-      .toBe(true);
-    expect(registerNumbers.slice(0, 37)).toEqual(
-      Array.from({length: 37}, (_, index) =>
-        `25054610500111${String(index + 1).padStart(3, '0')}`,
-      ),
-    );
-    expect(registerNumbers.slice(37)).toEqual(
-      Array.from({length: 18}, (_, index) =>
-        `25054610500112${String(index + 38).padStart(3, '0')}`,
+    expect(registerNumbers).toEqual(
+      Array.from({length: 55}, (_, index) =>
+        `DEMO-BCA2-${String(index + 1).padStart(3, '0')}`,
       ),
     );
     expect(students[0]).toEqual({
-      registerNumber: '25054610500111001',
-      name: 'ARAVIND S',
-    });
-    expect(students[36]).toEqual({
-      registerNumber: '25054610500111037',
-      name: 'YOGESWARAN S',
-    });
-    expect(students[37]).toEqual({
-      registerNumber: '25054610500112038',
-      name: 'ANANTHI S',
+      registerNumber: 'DEMO-BCA2-001',
+      name: 'Demo Student 001',
     });
     expect(students[54]).toEqual({
-      registerNumber: '25054610500112055',
-      name: 'YUVASREE P',
+      registerNumber: 'DEMO-BCA2-055',
+      name: 'Demo Student 055',
     });
   });
 
@@ -86,13 +87,76 @@ describe('class rosters', () => {
     expect(searchStudents(students, 'not-a-student')).toEqual([]);
   });
 
-  it('searches the actual BCA Second Year register numbers and names', () => {
+  it('searches anonymized BCA Second Year register numbers and names', () => {
     const students = getStudents(getClassroom('BCA', 2)!);
-    expect(searchStudents(students, '25054610500112042')).toContainEqual(
+    expect(searchStudents(students, 'DEMO-BCA2-042')).toContainEqual(
       students[41],
     );
-    expect(searchStudents(students, 'harinishri')).toContainEqual(
+    expect(searchStudents(students, 'demo student 042')).toContainEqual(
       students[41],
     );
+  });
+
+  it('provides exact timings for all five periods', () => {
+    expect(HOUR_SCHEDULES['Hour 1'].time).toBe('9:00 AM – 9:50 AM');
+    expect(HOUR_SCHEDULES['Hour 2'].time).toBe('9:50 AM – 10:40 AM');
+    expect(HOUR_SCHEDULES['Hour 3'].time).toBe('11:00 AM – 11:50 AM');
+    expect(HOUR_SCHEDULES['Hour 4'].time).toBe('11:50 AM – 12:40 PM');
+    expect(HOUR_SCHEDULES['Hour 5'].time).toBe('12:40 PM – 1:30 PM');
+  });
+
+  it('determines whether an hour is active, upcoming, or expired based on time', () => {
+    // 9:30 AM
+    const at930 = new Date('2026-11-12T09:30:00');
+    const h1At930 = getHourTimingStatus('Hour 1', at930)!;
+    expect(h1At930.isActive).toBe(true);
+    expect(h1At930.isExpired).toBe(false);
+    expect(h1At930.isUpcoming).toBe(false);
+
+    // 10:15 AM: Hour 1 has expired, Hour 2 is active
+    const at1015 = new Date('2026-11-12T10:15:00');
+    const h1At1015 = getHourTimingStatus('Hour 1', at1015)!;
+    expect(h1At1015.isExpired).toBe(true);
+    expect(h1At1015.isActive).toBe(false);
+
+    const h2At1015 = getHourTimingStatus('Hour 2', at1015)!;
+    expect(h2At1015.isActive).toBe(true);
+    expect(h2At1015.isExpired).toBe(false);
+
+    // 1:45 PM: all periods are expired
+    const at1345 = new Date('2026-11-12T13:45:00');
+    expect(getHourTimingStatus('Hour 5', at1345)!.isExpired).toBe(true);
+  });
+
+  it('computes current active period status and break intervals', () => {
+    const at920 = new Date('2026-11-12T09:20:00');
+    expect(getCurrentActivePeriod(at920)).toEqual({
+      label: 'Period I (Hour 1) Active',
+      hour: 'Hour 1',
+      status: 'active',
+    });
+
+    const atTeaBreak = new Date('2026-11-12T10:45:00');
+    expect(getCurrentActivePeriod(atTeaBreak)).toEqual({
+      label: 'Tea Break (10:40 AM – 11:00 AM)',
+      hour: null,
+      status: 'break',
+    });
+
+    const at8am = new Date('2026-11-12T08:00:00');
+    expect(getCurrentActivePeriod(at8am).status).toBe('before');
+
+    const at3pm = new Date('2026-11-12T15:00:00');
+    expect(getCurrentActivePeriod(at3pm).status).toBe('after');
+  });
+
+  it('formats live date and time correctly', () => {
+    const testDate = new Date('2026-11-12T11:21:45');
+    const dateStr = formatLiveDate(testDate);
+    const timeStr = formatLiveTime(testDate);
+
+    expect(dateStr).toContain('12');
+    expect(dateStr).toContain('Nov');
+    expect(timeStr).toContain('11:21');
   });
 });

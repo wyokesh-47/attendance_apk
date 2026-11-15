@@ -18,43 +18,79 @@ import {
   colors,
   statusCounts,
 } from '@/components/ui';
-import { HOURS, getClassroomLabel, getStudents } from '@/data/demoData';
-import { resolveClassroom } from '@/navigation/routeParams';
+import { HOURS, getClassroomLabel, getHourTimingStatus, getStudents } from '@/data/demoData';
+import {firstParam, resolveClassroom} from '@/navigation/routeParams';
 import {
   getAttendance,
   getSubmission,
   submitAttendance,
 } from '@/services/attendanceRepository';
+import {cloudAttendanceMap, cloudStudents, collegeToday, getClassAttendance, submitAttendanceSession} from '@/services/managementRepository';
 import type {
   AttendanceMap,
   SubmissionReceipt,
 } from '@/types/attendance';
+import type {ClassAttendanceData} from '@/types/management';
 
 export default function ReviewScreen() {
   const params = useLocalSearchParams<{
     code: string;
     year: string;
     hour: string;
+    classId?: string;
+    date?: string;
   }>();
   const classroom = resolveClassroom(params.code, params.year);
-  const hour = Array.isArray(params.hour) ? params.hour[0] : params.hour;
+  const hour = firstParam(params.hour);
   const validHour = hour && HOURS.includes(hour) ? hour : '';
-  const students = useMemo(
+  const cloudBacked = classroom?.department.code === 'BCA' && classroom.year === 2;
+  const classId = firstParam(params.classId);
+  const attendanceDate = firstParam(params.date) || collegeToday();
+  const localStudents = useMemo(
     () => (classroom ? getStudents(classroom) : []),
     [classroom?.department.code, classroom?.year],
   );
   const [attendance, setAttendance] = useState<AttendanceMap>({});
+  const [cloudData, setCloudData] = useState<ClassAttendanceData | null>(null);
   const [receipt, setReceipt] = useState<SubmissionReceipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const students = cloudBacked ? (cloudData ? cloudStudents(cloudData) : []) : localStudents;
+  const attendanceSubmitted = cloudBacked
+    ? cloudData?.session?.status === 'submitted'
+    : receipt !== null;
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError('');
+    setCloudData(null);
+    setAttendance({});
+    setReceipt(null);
     async function load() {
       if (!classroom || !validHour) {
         setError('Class or hour not found.');
         setLoading(false);
+        return;
+      }
+      if (cloudBacked) {
+        if (!classId) {
+          setError('Open this class from the BCA Second Year department page after Staff approval.');
+          setLoading(false);
+          return;
+        }
+        try {
+          const result = await getClassAttendance(classId, attendanceDate, Number(validHour.replace('Hour ', '')));
+          if (active) {
+            setCloudData(result);
+            setAttendance(cloudAttendanceMap(result));
+          }
+        } catch (reason) {
+          if (active) setError(reason instanceof Error ? reason.message : 'Could not load cloud attendance.');
+        } finally {
+          if (active) setLoading(false);
+        }
         return;
       }
       try {
@@ -78,7 +114,7 @@ export default function ReviewScreen() {
     return () => {
       active = false;
     };
-  }, [classroom?.department.code, classroom?.year, validHour]);
+  }, [attendanceDate, classId, classroom?.department.code, classroom?.year, cloudBacked, validHour]);
 
   if (!classroom || !validHour) {
     return (
@@ -90,15 +126,17 @@ export default function ReviewScreen() {
 
   const counts = statusCounts(attendance);
   const unmarked = students.length - Object.keys(attendance).length;
+  const timing = getHourTimingStatus(validHour);
+  const isExpired = timing?.isExpired ?? false;
 
   function confirmSubmission() {
-    if (!receipt && (unmarked > 0 || error)) return;
+    if (!attendanceSubmitted && (unmarked > 0 || error || isExpired)) return;
     Alert.alert(
-      receipt ? 'Already submitted' : 'Submit attendance?',
-      receipt
+      attendanceSubmitted ? 'Already submitted' : 'Submit attendance?',
+      attendanceSubmitted
         ? 'This class hour has already been submitted and is locked.'
-        : 'This saves the attendance receipt on this device.',
-      receipt
+        : cloudBacked ? 'Submit this attendance to the shared Principal dashboard?' : 'This saves the attendance receipt on this device.',
+      attendanceSubmitted
         ? [{text: 'View receipt', onPress: () => openReceipt()}]
         : [
             {text: 'Go back', style: 'cancel'},
@@ -114,6 +152,7 @@ export default function ReviewScreen() {
         code: classroom!.department.code,
         year: String(classroom!.year),
         hour: validHour,
+        ...(cloudBacked ? {classId, date: attendanceDate} : {}),
       },
     });
   }
@@ -122,8 +161,13 @@ export default function ReviewScreen() {
     setSubmitting(true);
     setError('');
     try {
-      const saved = await submitAttendance(classroom!, validHour);
-      setReceipt(saved);
+      if (cloudBacked) {
+        if (!cloudData?.session) throw new Error('Start attendance by marking a student before submitting.');
+        const submittedSession = await submitAttendanceSession(cloudData.session);
+        setCloudData({...cloudData, session: submittedSession});
+      } else {
+        setReceipt(await submitAttendance(classroom!, validHour));
+      }
       openReceipt();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not submit attendance.');
@@ -145,7 +189,6 @@ export default function ReviewScreen() {
       <AppHeader title="Review attendance" onBack={() => router.back()} />
       <Page scroll style={styles.content}>
         <Text style={styles.title}>{getClassroomLabel(classroom)}</Text>
-        <Text style={styles.note}>Device-only review · Submitting here does not send attendance to Principal/HOD.</Text>
         <Text style={styles.subtitle}>
           {validHour} · {students.length} students
         </Text>
@@ -161,7 +204,7 @@ export default function ReviewScreen() {
           value={String(unmarked)}
           valueColor={unmarked === 0 ? colors.green : '#B54708'}
         />
-        {!receipt && unmarked > 0 ? (
+        {!attendanceSubmitted && unmarked > 0 ? (
           <View style={styles.button}>
             <Text style={styles.errorText} accessibilityRole="alert">
               {students.length - unmarked} of {students.length} students marked.
@@ -171,7 +214,8 @@ export default function ReviewScreen() {
               label="Show unmarked students"
               onPress={() => router.replace({
                 pathname: '/attendance/[code]/[year]/[hour]',
-                params: {code: classroom.department.code, year: String(classroom.year), hour: validHour, unmarked: '1'},
+                params: {code: classroom.department.code, year: String(classroom.year), hour: validHour, unmarked: '1',
+                  ...(cloudBacked ? {classId, date: attendanceDate} : {})},
               })}
             />
           </View>
@@ -188,17 +232,24 @@ export default function ReviewScreen() {
           ))}
         </View>
         <Text style={styles.note}>
-          {receipt
+          {attendanceSubmitted
             ? 'This attendance has already been submitted. Staff editing is locked.'
-            : 'Mark every student before submitting. Your draft is saved on this device.'}
+            : isExpired
+              ? 'Attendance window has ended. Attendance can no longer be submitted.'
+              : cloudBacked ? 'Mark every student before submitting. Draft marks are saved to the shared cloud session.' : 'Mark every student before submitting. Your draft is saved on this device.'}
         </Text>
+        {isExpired && !attendanceSubmitted ? (
+          <Text style={styles.errorText} accessibilityRole="alert">
+            Attendance time for {validHour} has ended. Submissions are closed.
+          </Text>
+        ) : null}
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <View style={styles.button}>
           <PrimaryButton
-            icon={receipt ? 'receipt-text-outline' : 'cloud-check-outline'}
-            label={receipt ? 'View submission receipt' : 'Submit attendance'}
-            onPress={receipt ? openReceipt : confirmSubmission}
-            disabled={submitting || (!receipt && (unmarked > 0 || Boolean(error)))}
+            icon={attendanceSubmitted ? 'receipt-text-outline' : isExpired ? 'lock-outline' : 'cloud-check-outline'}
+            label={attendanceSubmitted ? 'View submission receipt' : isExpired ? 'Attendance time ended' : 'Submit attendance'}
+            onPress={attendanceSubmitted ? openReceipt : confirmSubmission}
+            disabled={submitting || (!attendanceSubmitted && (unmarked > 0 || Boolean(error) || isExpired))}
             loading={submitting}
           />
         </View>

@@ -43,34 +43,7 @@ describe('local demo attendance', () => {
     ).rejects.toThrow('not part of the selected class');
   });
 
-  it('tracks attendance against each of the 55 actual BCA Second Year register numbers', async () => {
-    const students = getStudents(bcaSecondYear);
-    const statuses = ['present', 'absent', 'od', 'informed_leave'] as const;
-
-    for (const [index, student] of students.entries()) {
-      await setStudentStatus(
-        bcaSecondYear,
-        hour,
-        student.registerNumber,
-        statuses[index % statuses.length]!,
-      );
-    }
-
-    const saved = await getAttendance(bcaSecondYear, hour);
-    expect(Object.keys(saved)).toHaveLength(55);
-    for (const [index, student] of students.entries()) {
-      expect(saved[student.registerNumber]).toBe(
-        statuses[index % statuses.length],
-      );
-    }
-
-    const allPresent = await markAllPresent(bcaSecondYear, hour);
-    expect(Object.keys(allPresent)).toHaveLength(55);
-    expect(Object.values(allPresent).every((status) => status === 'present'))
-      .toBe(true);
-  });
-
-  it('clears saved demo attendance and receipts from the replaced BCA Second Year roster', async () => {
+  it('blocks BCA Second Year attendance from being read or submitted locally', async () => {
     await AsyncStorage.setItem(
       'demo_attendance_BCA_2_Hour_1',
       JSON.stringify({'DEMO-26-BCA-2-001': 'present'}),
@@ -80,8 +53,15 @@ describe('local demo attendance', () => {
       JSON.stringify({classroom: {}, hour}),
     );
 
-    expect(await getAttendance(bcaSecondYear, hour)).toEqual({});
-    expect(await getSubmission(bcaSecondYear, hour)).toBeNull();
+    const sharedCloudMessage = 'BCA Second Year attendance must use the shared cloud attendance workflow.';
+    await expect(getAttendance(bcaSecondYear, hour)).rejects.toThrow(sharedCloudMessage);
+    await expect(getSubmission(bcaSecondYear, hour)).rejects.toThrow(sharedCloudMessage);
+    await expect(setStudentStatus(bcaSecondYear, hour, getStudents(bcaSecondYear)[0]!.registerNumber, 'present'))
+      .rejects.toThrow(sharedCloudMessage);
+    await expect(markAllPresent(bcaSecondYear, hour)).rejects.toThrow(sharedCloudMessage);
+    await expect(submitAttendance(bcaSecondYear, hour)).rejects.toThrow(sharedCloudMessage);
+    expect(await AsyncStorage.getItem('demo_attendance_BCA_2_Hour_1')).not.toBeNull();
+    expect(await AsyncStorage.getItem('demo_submission_BCA_2_Hour_1')).not.toBeNull();
   });
 
   it('saves a receipt and permanently prevents edits or duplicate submission', async () => {

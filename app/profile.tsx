@@ -1,4 +1,5 @@
 import { router } from 'expo-router';
+import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import {useAuth} from '@/providers/AuthProvider';
@@ -7,12 +8,28 @@ import {
   AppCard,
   AppHeader,
   DetailRow,
+  ErrorMessage,
   Page,
   colors,
 } from '@/components/ui';
 
 export default function ProfileScreen() {
   const {profile, logout} = useAuth();
+  const [signingOut, setSigningOut] = useState(false);
+  const [error, setError] = useState('');
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    setError('');
+    try {
+      await logout();
+      router.replace('/');
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not sign out. Please try again.');
+    } finally {
+      setSigningOut(false);
+    }
+  }
   return (
     <View style={styles.screen}>
       <AppHeader title="Account profile" onBack={() => router.back()} />
@@ -44,11 +61,12 @@ export default function ProfileScreen() {
           />
         </View>
         <AppCard
-          onPress={() => { void logout(); }}
+          onPress={() => { void signOut(); }}
           style={styles.signOut}
         >
-          <Text style={styles.signOutText}>Sign out</Text>
+          <Text style={styles.signOutText}>{signingOut ? 'Signing out…' : 'Sign out'}</Text>
         </AppCard>
+        {error ? <ErrorMessage>{error}</ErrorMessage> : null}
       </Page>
     </View>
   );

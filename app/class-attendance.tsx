@@ -6,18 +6,27 @@ import {AppCard, AppHeader, AppTextInput, ErrorMessage, FieldLabel, Page, Primar
 import {AttendanceTotals, DateHourControls, SelectionChip} from '@/components/ManagementControls';
 import {AttendanceReviewSheet} from '@/components/AttendanceReviewSheet';
 import {useAuth} from '@/providers/AuthProvider';
-import {collegeToday, getClassAttendance, saveAttendanceChange} from '@/services/managementRepository';
+import {collegeToday, getClassAttendance, openAttendanceSession, saveAttendanceChange, submitAttendanceSession} from '@/services/managementRepository';
 import {rpc} from '@/services/cloud';
 import type {AttendanceStatus} from '@/types/attendance';
-import type {ClassAttendanceData, CloudStudent} from '@/types/management';
+import type {ClassAttendanceData, CloudStudent, ManagedAccount} from '@/types/management';
 
 const statuses: AttendanceStatus[] = ['present','absent','od','informed_leave'];
 const first = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value;
+function formatSubmittedAt(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.valueOf())) return null;
+  return new Intl.DateTimeFormat('en-IN', {
+    dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata',
+  }).format(date);
+}
 export default function ClassAttendanceScreen() {
   const params = useLocalSearchParams<{classId: string; date: string; hour: string}>();
   const classId = first(params.classId) ?? '';
   const {profile} = useAuth();
   const manager = profile?.role === 'principal' || profile?.role === 'hod';
+  const principal = profile?.role === 'principal';
   const [selection, setSelection] = useState({date: first(params.date) ?? collegeToday(), hour: Number(first(params.hour) ?? 1)});
   const [data, setData] = useState<ClassAttendanceData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -32,6 +41,8 @@ export default function ClassAttendanceScreen() {
   const [editError, setEditError] = useState('');
   const [historyLimit, setHistoryLimit] = useState(20);
   const [review, setReview] = useState<ClassAttendanceData | null>(null);
+  const [staffEmails, setStaffEmails] = useState<Record<string, string>>({});
+  const [staffEmailError, setStaffEmailError] = useState('');
   const sequence = useRef(0);
   const loadedSelection = useRef('');
   const load = useCallback(async (silent = false) => {
@@ -49,10 +60,26 @@ export default function ClassAttendanceScreen() {
     return () => {sequence.current++;};
   }, [load]));
   useFocusEffect(useCallback(() => {
+    let active = true;
+    if (!principal) {
+      setStaffEmails({});
+      setStaffEmailError('');
+      return () => {active = false;};
+    }
+    setStaffEmails({});
+    setStaffEmailError('');
+    void rpc<ManagedAccount[]>('list_managed_accounts').then((accounts) => {
+      if (active) setStaffEmails(Object.fromEntries(accounts.map((account) => [account.id, account.email])));
+    }).catch((failure: unknown) => {
+      if (active) setStaffEmailError(failure instanceof Error ? failure.message : 'Could not load Staff email details.');
+    });
+    return () => {active = false;};
+  }, [principal, profile?.id]));
+  useFocusEffect(useCallback(() => {
     if (busy || editor || review) return;
-    const timer = setInterval(() => {void load(true);}, 20000);
+    const timer = setInterval(() => {void load(true);}, principal ? 10000 : 20000);
     return () => clearInterval(timer);
-  }, [load, busy, editor, review]));
+  }, [load, busy, editor, review, principal]));
   async function mutate(action: () => Promise<unknown>, success: string) {
     if (busy) return;
     setBusy(true); setError(''); setNotice('');
@@ -90,13 +117,17 @@ export default function ClassAttendanceScreen() {
   const canEdit = Boolean(data?.session && (!manager || submitted));
   const needsReason = manager || editor?.snapshot.session?.status === 'submitted';
   const changes = data?.changes ?? [];
+  const submitterId = submitted ? data?.session?.submitted_by : data?.session?.created_by;
+  const staffEmail = submitterId ? staffEmails[submitterId] : undefined;
+  const submittedAt = submitted ? formatSubmittedAt(data?.session?.submitted_at) : null;
   const recordNames = new Map(data?.students.filter((item) => item.record).map((item) => [item.record!.id, item.students.name]));
+  const serialNumbers = new Map((data?.students ?? []).map((student, index) => [student.id, index + 1]));
   return <View style={styles.screen}>
     <AppHeader title="Class attendance" onBack={() => router.back()} onProfile={() => router.push('/profile')} />
     <Page scroll safeAreaEdges={['left','right','bottom']} style={styles.content}>
       <AppCard><DateHourControls date={selection.date} hour={selection.hour} disabled={busy}
         onChange={(date, hour) => {setSelection({date, hour}); setNotice(''); setFilter('all'); setEditor(null);}} /></AppCard>
-      <PrimaryButton label="Refresh class" onPress={() => void load()} loading={loading} disabled={busy} />
+      {!principal ? <PrimaryButton label="Refresh class" onPress={() => void load()} loading={loading} disabled={busy} /> : null}
       {error ? <ErrorMessage>{error}</ErrorMessage> : null}
       {notice ? <Text accessibilityRole="alert" style={styles.success}>{notice}</Text> : null}
       {loading ? <ActivityIndicator style={styles.loader} /> : null}
@@ -104,12 +135,23 @@ export default function ClassAttendanceScreen() {
         <View style={styles.intro}>
           <Text style={styles.title}>{data.classroom.departments.name}</Text>
           <Text style={styles.subtitle}>Year {data.classroom.study_year} · Section {data.classroom.section}</Text>
-          <Text style={styles.subtitle}>{selection.date} · Hour {selection.hour} · {submitted ? 'Submitted' : data.session ? 'Draft' : 'Not started'}</Text>
+          <Text style={styles.subtitle}>{selection.date} · Hour {selection.hour} · {submitted ? 'Submitted' : data.session ? 'Draft' : 'Not Submitted'}</Text>
+          {data.session ? <Text style={styles.subtitle}>
+            {submitted ? 'Submitted by' : 'Started by'} {submitted
+              ? data.session.submitted_by_profile?.name ?? 'Staff account'
+              : data.session.created_by_profile?.name ?? 'Staff account'}
+          </Text> : null}
+          {submitted ? <Text style={styles.subtitle}>
+            {submittedAt ? `Submitted: ${submittedAt}` : 'Submission time is not available in the database.'}
+          </Text> : null}
+          {principal && submitted ? staffEmail ? <Text style={styles.subtitle}>Staff email: {staffEmail}</Text> :
+            staffEmailError ? <ErrorMessage>{`Staff email unavailable: ${staffEmailError}`}</ErrorMessage> :
+              <Text style={styles.subtitle}>Staff email is not available for this attendance session.</Text> : null}
         </View>
         <AppCard><AttendanceTotals counts={counts} /></AppCard>
         {!manager && !data.session ? <>
-          <PrimaryButton label="Mark attendance" disabled={busy || !counts.total_students || selection.date !== collegeToday()} onPress={() => void mutate(() => rpc('open_attendance_session', {
-            p_class: classId, p_date: selection.date, p_hour: selection.hour}), 'Attendance draft started.')} />
+          <PrimaryButton label="Mark attendance" disabled={busy || !counts.total_students || selection.date !== collegeToday()} onPress={() => void mutate(() => openAttendanceSession(
+            classId, selection.date, selection.hour), 'Attendance draft started.')} />
           {selection.date !== collegeToday() ? <Text style={styles.subtitle}>New attendance can only be started for today. Existing drafts can be resumed.</Text> : null}
         </> : null}
         {manager && !submitted ? <Text style={styles.subtitle}>Staff must mark and submit this session before management can correct it.</Text> : null}
@@ -129,6 +171,7 @@ export default function ClassAttendanceScreen() {
           label={value === 'all' ? 'All students' : value === 'unmarked' ? 'Unmarked' : statusLabels[value]} selected={filter === value} disabled={busy} onPress={() => setFilter(value)} />)}</View>
         {!visible.length ? <Text style={styles.subtitle}>No students match this search or filter.</Text> : null}
         {visible.map((student) => <AppCard key={student.id} style={styles.studentCard} onPress={canEdit && !busy ? () => edit(student) : undefined}>
+          <Text style={styles.serial}>{serialNumbers.get(student.id)}.</Text>
           <View style={styles.studentInfo}><Text style={styles.studentName}>{student.students.name}</Text><Text style={styles.register}>{student.students.register_number}</Text></View>
           <Text style={[styles.status, student.record?.status === 'absent' && styles.absent]}>{student.record ? statusLabels[student.record.status] : 'Unmarked'}</Text>
         </AppCard>)}
@@ -149,7 +192,7 @@ export default function ClassAttendanceScreen() {
         if (!review?.session) return;
         const session = review.session;
         setReview(null);
-        void mutate(() => rpc('submit_attendance', {p_session: session.id, p_expected_version: session.version}), 'Attendance submitted to management.');
+        void mutate(() => submitAttendanceSession(session), 'Attendance submitted to management.');
       }} />
     <Modal visible={Boolean(editor)} animationType="slide" onRequestClose={() => {if (!busy) setEditor(null);}}>
       <SafeAreaView style={styles.screen}><KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
@@ -177,7 +220,7 @@ export default function ClassAttendanceScreen() {
 const styles = StyleSheet.create({screen: {flex: 1, backgroundColor: colors.background}, content: {gap: 16, paddingTop: 16, paddingBottom: 36},
   intro: {gap: 5}, title: {fontSize: 24, lineHeight: 32, fontWeight: '800', color: colors.ink}, heading: {fontSize: 19, lineHeight: 26, fontWeight: '700', color: colors.ink, marginTop: 12},
   subtitle: {fontSize: 14, lineHeight: 21, color: colors.muted}, success: {fontSize: 14, lineHeight: 21, color: colors.green}, loader: {marginVertical: 20},
-  wrap: {flexDirection: 'row', flexWrap: 'wrap', gap: 8}, studentCard: {flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12}, studentInfo: {flex: 1, minWidth: 0, gap: 5},
+  wrap: {flexDirection: 'row', flexWrap: 'wrap', gap: 8}, studentCard: {flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12}, serial: {width: 28, color: colors.muted, fontSize: 12, fontWeight: '700'}, studentInfo: {flex: 1, minWidth: 0, gap: 5},
   studentName: {fontSize: 14, lineHeight: 21, fontWeight: '700', color: colors.ink}, register: {fontSize: 11, lineHeight: 17, color: colors.muted},
   status: {width: 88, textAlign: 'center', fontSize: 12, lineHeight: 18, fontWeight: '700', padding: 8, borderRadius: 10, backgroundColor: colors.paleGreen, color: colors.green}, absent: {color: '#B42318', backgroundColor: '#FFF1F0'},
   historyCard: {gap: 8}, editor: {padding: 24, gap: 18}, reason: {minHeight: 110, textAlignVertical: 'top'},

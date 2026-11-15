@@ -10,33 +10,67 @@ import {
   StatusSummary,
   SummaryLine,
   colors,
+  statusCounts,
 } from '@/components/ui';
 import { HOURS, getClassroomLabel, getStudents } from '@/data/demoData';
-import { resolveClassroom } from '@/navigation/routeParams';
+import { firstParam, resolveClassroom } from '@/navigation/routeParams';
 import { getSubmission } from '@/services/attendanceRepository';
+import {cloudAttendanceMap, cloudStudents, collegeToday, getClassAttendance} from '@/services/managementRepository';
 import type { SubmissionReceipt } from '@/types/attendance';
+import type {ClassAttendanceData} from '@/types/management';
 
 export default function ReceiptScreen() {
   const params = useLocalSearchParams<{
     code: string;
     year: string;
     hour: string;
+    classId?: string;
+    date?: string;
   }>();
   const classroom = resolveClassroom(params.code, params.year);
-  const hour = Array.isArray(params.hour) ? params.hour[0] : params.hour;
+  const hour = firstParam(params.hour);
   const validHour = hour && HOURS.includes(hour) ? hour : '';
+  const cloudBacked = classroom?.department.code === 'BCA' && classroom.year === 2;
+  const classId = firstParam(params.classId);
+  const attendanceDate = firstParam(params.date) || collegeToday();
+  const [cloudData, setCloudData] = useState<ClassAttendanceData | null>(null);
   const [receipt, setReceipt] = useState<SubmissionReceipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError('');
+    setCloudData(null);
+    setReceipt(null);
     if (!classroom || !validHour) {
       setError('This receipt could not be found.');
       setLoading(false);
       return () => {
         active = false;
       };
+    }
+    if (cloudBacked) {
+      if (!classId) {
+        setError('Open this class from the BCA Second Year department page after Staff approval.');
+        setLoading(false);
+        return () => {active = false;};
+      }
+      void getClassAttendance(classId, attendanceDate, Number(validHour.replace('Hour ', '')))
+        .then((result) => {
+          if (active) {
+            if (result.session?.status === 'submitted') setCloudData(result);
+            else setError('This cloud attendance session has not been submitted.');
+          }
+        })
+        .catch((reason: unknown) => {
+          if (active) setError(reason instanceof Error ? reason.message : 'Could not load cloud submission.');
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+      return () => {active = false;};
     }
     void getSubmission(classroom, validHour)
       .then((saved) => {
@@ -56,7 +90,7 @@ export default function ReceiptScreen() {
     return () => {
       active = false;
     };
-  }, [classroom?.department.code, classroom?.year, validHour]);
+  }, [attendanceDate, classId, classroom?.department.code, classroom?.year, cloudBacked, validHour]);
 
   if (!classroom || !validHour) {
     return <Problem message={error || 'This receipt could not be found.'} />;
@@ -68,15 +102,19 @@ export default function ReceiptScreen() {
       </View>
     );
   }
-  if (!receipt) {
+  if (!receipt && !cloudData) {
     return <Problem message={error || 'This receipt could not be found.'} />;
   }
 
-  const time = new Intl.DateTimeFormat(undefined, {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(receipt.submittedAt));
-  const total = getStudents(classroom).length;
+  const cloudAttendance = cloudData ? cloudAttendanceMap(cloudData) : null;
+  const students = cloudData ? cloudStudents(cloudData) : getStudents(classroom);
+  const total = students.length;
+  const counts = cloudAttendance
+    ? statusCounts(cloudAttendance)
+    : {present: receipt!.present, absent: receipt!.absent, od: receipt!.od, informed_leave: receipt!.informedLeave};
+  const submittedTime = cloudData?.session?.submitted_at
+    ? new Intl.DateTimeFormat('en-IN', {dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata'}).format(new Date(cloudData.session.submitted_at))
+    : receipt ? new Intl.DateTimeFormat(undefined, {hour: 'numeric', minute: '2-digit'}).format(new Date(receipt.submittedAt)) : null;
 
   return (
     <View style={styles.screen}>
@@ -90,22 +128,16 @@ export default function ReceiptScreen() {
         </View>
         <Text style={styles.title}>Attendance submitted</Text>
         <Text style={styles.subtitle}>{getClassroomLabel(classroom)} · {validHour}</Text>
-        <Text style={styles.time}>Receipt saved at {time}</Text>
+        {submittedTime ? <Text style={styles.time}>{cloudBacked ? 'Submitted' : 'Receipt saved at'} {submittedTime}</Text> : null}
         <View style={styles.summary}>
           <StatusSummary
-            counts={{
-              present: receipt.present,
-              absent: receipt.absent,
-              od: receipt.od,
-              informed_leave: receipt.informedLeave,
-            }}
+            counts={counts}
           />
         </View>
         <SummaryLine label="Class size" value={String(total)} />
-        <SummaryLine label="Not marked" value={String(receipt.unmarked)} />
+        <SummaryLine label="Not marked" value={cloudAttendance ? String(total - Object.keys(cloudAttendance).length) : String(receipt!.unmarked)} />
         <Text style={styles.note}>
-          This confirmation is stored only on this device. It is not a college
-          report.
+          {cloudBacked ? 'This submission is saved in the shared cloud attendance system and is available to the Principal.' : 'This confirmation is stored only on this device. It is not a college report.'}
         </Text>
         <View style={styles.button}>
           <PrimaryButton

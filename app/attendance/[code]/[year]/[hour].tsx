@@ -26,22 +26,25 @@ import {
   ATTENDANCE_STATUSES,
   HOURS,
   getClassroomLabel,
+  getHourTimingStatus,
   getStudents,
   searchStudents,
 } from '@/data/demoData';
-import { resolveClassroom } from '@/navigation/routeParams';
+import {firstParam, resolveClassroom} from '@/navigation/routeParams';
 import {
   getAttendance,
   getSubmission,
   markAllPresent,
   setStudentStatus,
 } from '@/services/attendanceRepository';
+import {cloudAttendanceMap, cloudStudents, collegeToday, getClassAttendance, markAllCloudPresent, openAttendanceSession, saveAttendanceChange} from '@/services/managementRepository';
 import type {
   AttendanceMap,
   AttendanceStatus,
   DemoStudent,
   SubmissionReceipt,
 } from '@/types/attendance';
+import type {ClassAttendanceData} from '@/types/management';
 
 export default function AttendanceScreen() {
   const params = useLocalSearchParams<{
@@ -49,15 +52,21 @@ export default function AttendanceScreen() {
     year: string;
     hour: string;
     unmarked?: string;
+    classId?: string;
+    date?: string;
   }>();
   const classroom = resolveClassroom(params.code, params.year);
-  const hour = Array.isArray(params.hour) ? params.hour[0] : params.hour;
+  const hour = firstParam(params.hour);
   const validHour = hour && HOURS.includes(hour) ? hour : '';
-  const students = useMemo(
+  const cloudBacked = classroom?.department.code === 'BCA' && classroom.year === 2;
+  const classId = firstParam(params.classId);
+  const attendanceDate = firstParam(params.date) || collegeToday();
+  const localStudents = useMemo(
     () => (classroom ? getStudents(classroom) : []),
     [classroom?.department.code, classroom?.year],
   );
   const [attendance, setAttendance] = useState<AttendanceMap>({});
+  const [cloudData, setCloudData] = useState<ClassAttendanceData | null>(null);
   const [receipt, setReceipt] = useState<SubmissionReceipt | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<DemoStudent | null>(null);
   const [query, setQuery] = useState('');
@@ -65,13 +74,41 @@ export default function AttendanceScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const students = cloudBacked ? (cloudData ? cloudStudents(cloudData) : []) : localStudents;
+  const attendanceSubmitted = cloudBacked
+    ? cloudData?.session?.status === 'submitted'
+    : receipt !== null;
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError('');
+    setCloudData(null);
+    setAttendance({});
+    setReceipt(null);
     async function load() {
       if (!classroom || !validHour) {
         setError('Class or hour not found.');
         setLoading(false);
+        return;
+      }
+      if (cloudBacked) {
+        if (!classId) {
+          setError('Open this class from the BCA Second Year department page after Staff approval.');
+          setLoading(false);
+          return;
+        }
+        try {
+          const result = await getClassAttendance(classId, attendanceDate, Number(validHour.replace('Hour ', '')));
+          if (active) {
+            setCloudData(result);
+            setAttendance(cloudAttendanceMap(result));
+          }
+        } catch (reason) {
+          if (active) setError(reason instanceof Error ? reason.message : 'Could not load cloud attendance.');
+        } finally {
+          if (active) setLoading(false);
+        }
         return;
       }
       try {
@@ -95,7 +132,15 @@ export default function AttendanceScreen() {
     return () => {
       active = false;
     };
-  }, [classroom?.department.code, classroom?.year, validHour]);
+  }, [attendanceDate, classId, classroom?.department.code, classroom?.year, cloudBacked, validHour]);
+
+  async function refreshCloudAttendance(): Promise<ClassAttendanceData> {
+    if (!classId || !cloudBacked) throw new Error('Shared cloud class is unavailable.');
+    const result = await getClassAttendance(classId, attendanceDate, Number(validHour.replace('Hour ', '')));
+    setCloudData(result);
+    setAttendance(cloudAttendanceMap(result));
+    return result;
+  }
 
   const filteredStudents = useMemo(
     () => searchStudents(students, query).filter(
@@ -104,20 +149,35 @@ export default function AttendanceScreen() {
     [students, query, onlyUnmarked, attendance],
   );
   const counts = statusCounts(attendance);
+  const timing = getHourTimingStatus(validHour);
+  const isExpired = timing?.isExpired ?? false;
 
   async function saveStatus(status: AttendanceStatus) {
-    if (!classroom || !selectedStudent || receipt) return;
+    if (!classroom || !selectedStudent || attendanceSubmitted || isExpired) return;
     setSaving(true);
     setError('');
     try {
-      const updated = await setStudentStatus(
-        classroom,
-        validHour,
-        selectedStudent.registerNumber,
-        status,
-      );
-      setAttendance(updated);
-      setSelectedStudent(null);
+      if (cloudBacked) {
+        let current = cloudData;
+        if (!current) throw new Error('Cloud attendance is not loaded. Refresh before retrying.');
+        if (!current.session) {
+          await openAttendanceSession(classId, attendanceDate, Number(validHour.replace('Hour ', '')));
+          current = await refreshCloudAttendance();
+        }
+        if (!current.session) throw new Error('Could not open the shared attendance session.');
+        const enrollment = current.students.find((item) => item.students.register_number === selectedStudent.registerNumber);
+        if (!enrollment) throw new Error('Student is not enrolled in this shared class.');
+        await saveAttendanceChange(current, enrollment.id, status, '', false);
+        setSelectedStudent(null);
+        try {
+          await refreshCloudAttendance();
+        } catch {
+          setError('Attendance was saved to the cloud, but updated totals could not be loaded. Reopen this hour to refresh.');
+        }
+      } else {
+        setAttendance(await setStudentStatus(classroom, validHour, selectedStudent.registerNumber, status));
+        setSelectedStudent(null);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not save status.');
     } finally {
@@ -126,11 +186,27 @@ export default function AttendanceScreen() {
   }
 
   async function setEveryonePresent() {
-    if (!classroom || receipt) return;
+    if (!classroom || attendanceSubmitted || isExpired) return;
     setSaving(true);
     setError('');
     try {
-      setAttendance(await markAllPresent(classroom, validHour));
+      if (cloudBacked) {
+        let current = cloudData;
+        if (!current) throw new Error('Cloud attendance is not loaded. Refresh before retrying.');
+        if (!current.session) {
+          await openAttendanceSession(classId, attendanceDate, Number(validHour.replace('Hour ', '')));
+          current = await refreshCloudAttendance();
+        }
+        if (!current.session) throw new Error('Could not open the shared attendance session.');
+        await markAllCloudPresent(current.session);
+        try {
+          await refreshCloudAttendance();
+        } catch {
+          setError('All students were marked in the cloud, but updated totals could not be loaded. Reopen this hour to refresh.');
+        }
+      } else {
+        setAttendance(await markAllPresent(classroom, validHour));
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not mark all present.');
     } finally {
@@ -155,6 +231,7 @@ export default function AttendanceScreen() {
         code: selectedClassroom.department.code,
         year: String(selectedClassroom.year),
         hour: validHour,
+        ...(cloudBacked ? {classId, date: attendanceDate} : {}),
       },
     });
   }
@@ -162,7 +239,7 @@ export default function AttendanceScreen() {
   return (
     <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
       <AppHeader
-        title={validHour}
+        title={timing ? `${validHour} · ${timing.timeLabel}` : validHour}
         onBack={() => router.back()}
         onProfile={() => router.push('/profile')}
       />
@@ -182,9 +259,12 @@ export default function AttendanceScreen() {
               </Text>
             </View>
             <StatusSummary counts={counts} />
-            <DemoBanner text="DEVICE ONLY · Saved on this phone, not shared with Principal/HOD" />
             {receipt ? (
               <DemoBanner text="SUBMITTED · Attendance is locked for editing" />
+            ) : attendanceSubmitted ? (
+              <DemoBanner text="SUBMITTED · Attendance is locked for editing" />
+            ) : isExpired ? (
+              <DemoBanner text={`TIME ENDED · Attendance for ${validHour} closed at ${timing?.schedule.time}. Marking is locked.`} />
             ) : null}
             <Pressable accessibilityRole="button" accessibilityState={{selected: onlyUnmarked}}
               onPress={() => setOnlyUnmarked((value) => !value)}>
@@ -210,11 +290,11 @@ export default function AttendanceScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Mark All Present"
-                disabled={saving || Boolean(receipt)}
+                disabled={saving || attendanceSubmitted || isExpired}
                 onPress={setEveryonePresent}
                 style={({pressed}) => [
                   styles.allPresentButton,
-                  (saving || Boolean(receipt)) && styles.disabled,
+                  (saving || attendanceSubmitted || isExpired) && styles.disabled,
                   pressed && styles.pressed,
                 ]}
               >
@@ -247,7 +327,7 @@ export default function AttendanceScreen() {
                   student={student}
                   status={attendance[student.registerNumber]}
                   onPress={
-                    receipt ? undefined : () => setSelectedStudent(student)
+                    attendanceSubmitted || isExpired ? undefined : () => setSelectedStudent(student)
                   }
                 />
               ))
@@ -255,10 +335,16 @@ export default function AttendanceScreen() {
           </ScrollView>
 
           <View style={styles.footer}>
-            {receipt ? (
+            {attendanceSubmitted ? (
               <PrimaryButton
                 icon="receipt-text-outline"
                 label="View submission receipt"
+                onPress={openReview}
+              />
+            ) : isExpired ? (
+              <PrimaryButton
+                icon="lock-outline"
+                label="Attendance closed · View summary"
                 onPress={openReview}
               />
             ) : (
@@ -305,6 +391,7 @@ export default function AttendanceScreen() {
                 />
               ))}
             </View>
+            {error ? <Text style={styles.errorText}>{error}</Text> : null}
             {saving ? <ActivityIndicator color={colors.green} /> : null}
           </View>
         </View>

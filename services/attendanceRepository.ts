@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { getStorageKey, getStudents, HOURS } from '@/data/demoData';
+import { getStorageKey, getStudents } from '@/data/demoData';
 import type {
   AttendanceMap,
   AttendanceStatus,
@@ -30,30 +30,10 @@ const storageKeys = {
 };
 
 const mutationTails = new Map<string, Promise<void>>();
-let bcaSecondYearRosterMigration: Promise<void> | null = null;
 
-async function ensureCurrentRoster(classroom: Classroom): Promise<void> {
-  if (classroom.department.code !== 'BCA' || classroom.year !== 2) return;
-
-  if (!bcaSecondYearRosterMigration) {
-    bcaSecondYearRosterMigration = (async () => {
-      const versionKey = 'attendance_roster_BCA_2_version';
-      const currentVersion = await AsyncStorage.getItem(versionKey);
-      if (currentVersion === 'actual-55-v1') return;
-
-      const oldRosterKeys = HOURS.flatMap((hour) => [
-        storageKeys.attendance(classroom, hour),
-        storageKeys.receipt(classroom, hour),
-      ]);
-      await AsyncStorage.multiRemove(oldRosterKeys);
-      await AsyncStorage.setItem(versionKey, 'actual-55-v1');
-    })();
-  }
-
-  try {
-    await bcaSecondYearRosterMigration;
-  } finally {
-    bcaSecondYearRosterMigration = null;
+function assertDeviceAttendanceSupported(classroom: Classroom): void {
+  if (classroom.department.code === 'BCA' && classroom.year === 2) {
+    throw new Error('BCA Second Year attendance must use the shared cloud attendance workflow.');
   }
 }
 
@@ -94,7 +74,7 @@ export async function getAttendance(
   classroom: Classroom,
   hour: string,
 ): Promise<AttendanceMap> {
-  await ensureCurrentRoster(classroom);
+  assertDeviceAttendanceSupported(classroom);
   const raw = await AsyncStorage.getItem(storageKeys.attendance(classroom, hour));
   if (!raw) return {};
   const parsed: unknown = JSON.parse(raw);
@@ -126,7 +106,7 @@ export async function getSubmission(
   classroom: Classroom,
   hour: string,
 ): Promise<SubmissionReceipt | null> {
-  await ensureCurrentRoster(classroom);
+  assertDeviceAttendanceSupported(classroom);
   const raw = await AsyncStorage.getItem(storageKeys.receipt(classroom, hour));
   if (!raw) return null;
 
@@ -180,6 +160,7 @@ export async function setStudentStatus(
   registerNumber: string,
   status: AttendanceStatus,
 ): Promise<AttendanceMap> {
+  assertDeviceAttendanceSupported(classroom);
   const students = getStudents(classroom);
   if (!students.some((student) => student.registerNumber === registerNumber)) {
     throw new Error('This student is not part of the selected class.');
@@ -201,6 +182,7 @@ export async function markAllPresent(
   classroom: Classroom,
   hour: string,
 ): Promise<AttendanceMap> {
+  assertDeviceAttendanceSupported(classroom);
   return serializeMutation(storageKeys.attendance(classroom, hour), async () => {
     const receipt = await getSubmission(classroom, hour);
     assertEditable(receipt);
@@ -220,6 +202,7 @@ export async function submitAttendance(
   classroom: Classroom,
   hour: string,
 ): Promise<SubmissionReceipt> {
+  assertDeviceAttendanceSupported(classroom);
   return serializeMutation(storageKeys.attendance(classroom, hour), async () => {
     const existing = await getSubmission(classroom, hour);
     if (existing) throw new DuplicateSubmissionError();

@@ -9,9 +9,13 @@ node_modules/
 .pub/
 build/
 coverage/
+/dist/
+/android-before-expo-*/
+/legacy_flutter_backup/
 android/.gradle/
 android/local.properties
 android/key.properties
+android/app/debug.keystore
 ios/Flutter/.last_build_id
 ios/Pods/
 macos/Flutter/GeneratedPluginRegistrant.swift
@@ -27,4 +31,8 @@ expo-env.d.ts
 !.env.example
 
 # Supabase
-/supabase/
+/supabase/*
+!/supabase/bootstrap_principal.sql
+!/supabase/management_update.sql
+!/supabase/seed_bca_second_year.sql
+!/supabase/README.md

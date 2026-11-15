@@ -1,6 +1,14 @@
 import {getClassroom} from '@/data/demoData';
 import type {Classroom} from '@/types/attendance';
 
+export function isStaffBcaDemo(code: string | undefined, role: string | undefined): boolean {
+  return code === 'BCA' && role === 'staff';
+}
+
+export function getVisibleStudyYears(linkedYears: number[]): number[] {
+  return [...new Set([1, 2, 3, ...linkedYears])].sort((a, b) => a - b);
+}
+
 export function resolveClassroom(
   code: string | string[] | undefined,
   year: string | string[] | undefined,

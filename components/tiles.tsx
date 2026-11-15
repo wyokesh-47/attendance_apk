@@ -9,6 +9,7 @@ import type {
   Department,
 } from '@/types/attendance';
 import { getClassroomLabel, STUDY_YEARS } from '@/data/demoData';
+import {getHourPresentation} from './hourStatus';
 
 const departmentIcons: Record<
   Department['code'],
@@ -25,9 +26,17 @@ const departmentIcons: Record<
 
 export function DepartmentTile({
   department,
+  attendanceCounts,
   onPress,
 }: {
   department: Department;
+  attendanceCounts?: {
+    total_students: number;
+    present: number;
+    absent: number;
+    od: number;
+    informed_leave: number;
+  };
   onPress: () => void;
 }) {
   return (
@@ -56,6 +65,17 @@ export function DepartmentTile({
           />
         </View>
       </View>
+      {attendanceCounts ? (
+        <View style={styles.attendanceCounts}>
+          <Text style={styles.attendanceStudentCount}>{attendanceCounts.total_students} students</Text>
+          <View style={styles.attendanceStatuses}>
+            <Text style={styles.presentCount}>Present {attendanceCounts.present}</Text>
+            <Text style={styles.absentCount}>Absent {attendanceCounts.absent}</Text>
+            <Text style={styles.odCount}>OD {attendanceCounts.od}</Text>
+            <Text style={styles.leaveCount}>Informed Leave {attendanceCounts.informed_leave}</Text>
+          </View>
+        </View>
+      ) : null}
     </AppCard>
   );
 }
@@ -91,41 +111,133 @@ export function YearTile({
 
 export function HourTile({
   hour,
+  timeRange,
+  periodName,
+  isExpired = false,
+  isActive = false,
   marked,
   total,
   submitted,
   onPress,
 }: {
   hour: string;
+  timeRange?: string;
+  periodName?: string;
+  isExpired?: boolean;
+  isActive?: boolean;
   marked: number;
   total: number;
   submitted: boolean;
   onPress: () => void;
 }) {
-  const complete = marked === total;
+  const {complete, submitted: hasSubmittedCheck} = getHourPresentation(marked, total, submitted);
+
   return (
-    <AppCard onPress={onPress} style={styles.selectionTile}>
-      <View style={styles.hourBadge}>
+    <AppCard
+      onPress={onPress}
+      style={[
+        styles.selectionTile,
+        isActive && styles.activeCard,
+        isExpired && !submitted && styles.expiredCard,
+      ]}
+    >
+      <View
+        style={[
+          styles.hourBadge,
+          submitted
+            ? styles.hourSubmittedBadge
+            : isExpired
+              ? styles.hourExpiredBadge
+              : isActive
+                ? styles.hourActiveBadge
+                : null,
+        ]}
+      >
         <MaterialCommunityIcons
-          name="clock-outline"
-          color={colors.green}
+          name={
+            hasSubmittedCheck
+              ? 'check-circle'
+              : isExpired
+                ? 'lock-outline'
+                : isActive
+                  ? 'clock-fast'
+                  : 'clock-outline'
+          }
+          color={
+            submitted
+              ? '#027A48'
+              : isExpired
+                ? '#667085'
+                : isActive
+                  ? colors.green
+                  : colors.green
+          }
           size={22}
         />
       </View>
       <View style={styles.selectionText}>
-        <Text style={styles.selectionTitle}>{hour}</Text>
+        <View style={styles.hourTitleRow}>
+          <Text style={styles.selectionTitle}>{hour}</Text>
+          {timeRange ? (
+            <View
+              style={[
+                styles.timeChip,
+                isActive && styles.timeChipActive,
+                isExpired && styles.timeChipExpired,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.timeChipText,
+                  isActive && styles.timeChipTextActive,
+                ]}
+              >
+                {timeRange}
+              </Text>
+            </View>
+          ) : null}
+          {isActive ? (
+            <View style={styles.activePill}>
+              <Text style={styles.activePillText}>LIVE</Text>
+            </View>
+          ) : null}
+        </View>
         <Text style={styles.selectionSubtitle}>
-          {submitted
-            ? 'Attendance submitted'
-            : complete
-              ? 'All students marked'
-              : `${marked}/${total} marked`}
+          {submitted ? (
+            'Attendance submitted'
+          ) : isExpired ? (
+            <Text style={styles.expiredText}>Time ended · {marked}/{total} marked</Text>
+          ) : isActive ? (
+            <Text style={styles.activeText}>
+              {complete ? 'All students marked' : `Active now · ${marked}/${total} marked`}
+            </Text>
+          ) : complete ? (
+            'All students marked'
+          ) : (
+            `${marked}/${total} marked`
+          )}
         </Text>
       </View>
       <MaterialCommunityIcons
-        name={submitted || complete ? 'check-circle' : 'chevron-right'}
+        name={
+          submitted
+            ? 'check-circle'
+            : isExpired
+              ? 'lock-outline'
+              : isActive
+                ? 'arrow-right-circle'
+                : 'chevron-right'
+        }
         size={21}
-        color={submitted || complete ? colors.green : colors.muted}
+        color={
+          hasSubmittedCheck
+            ? '#027A48'
+            : isExpired
+              ? '#98A2B3'
+              : isActive
+                ? colors.green
+                : colors.muted
+        }
       />
     </AppCard>
   );
@@ -295,6 +407,13 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     fontWeight: '700',
   },
+  attendanceCounts: {marginTop: 9, gap: 6},
+  attendanceStudentCount: {fontSize: 11, lineHeight: 16, fontWeight: '700', color: colors.ink},
+  attendanceStatuses: {flexDirection: 'row', flexWrap: 'wrap', gap: 8},
+  presentCount: {fontSize: 9, lineHeight: 13, fontWeight: '700', color: colors.green},
+  absentCount: {fontSize: 9, lineHeight: 13, fontWeight: '700', color: '#B42318'},
+  odCount: {fontSize: 9, lineHeight: 13, fontWeight: '700', color: '#805B13'},
+  leaveCount: {fontSize: 9, lineHeight: 13, fontWeight: '700', color: '#6941C6'},
   selectionTile: {
     minHeight: 78,
     paddingHorizontal: 16,
@@ -323,6 +442,76 @@ const styles = StyleSheet.create({
   selectionText: {flex: 1, minWidth: 0},
   selectionTitle: {color: colors.ink, fontSize: 15, fontWeight: '700'},
   selectionSubtitle: {color: colors.muted, fontSize: 12, marginTop: 3},
+  hourTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    flexWrap: 'wrap',
+  },
+  timeChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: '#F2F4F7',
+  },
+  timeChipActive: {
+    backgroundColor: '#EAF6FF',
+    borderColor: '#B9E0F8',
+    borderWidth: 1,
+  },
+  timeChipExpired: {
+    backgroundColor: '#FEE4E2',
+  },
+  timeChipText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: colors.muted,
+  },
+  timeChipTextActive: {
+    color: colors.green,
+  },
+  activePill: {
+    backgroundColor: '#ECFDF3',
+    borderColor: '#A6F4C5',
+    borderWidth: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  activePillText: {
+    color: '#027A48',
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  activeCard: {
+    borderColor: '#38A9E8',
+    borderWidth: 1.5,
+    shadowColor: '#1769AA',
+    shadowOpacity: 0.12,
+  },
+  expiredCard: {
+    backgroundColor: '#FCFCFD',
+    borderColor: '#EAECF0',
+    opacity: 0.88,
+  },
+  hourSubmittedBadge: {
+    backgroundColor: '#ECFDF3',
+  },
+  hourExpiredBadge: {
+    backgroundColor: '#F2F4F7',
+  },
+  hourActiveBadge: {
+    backgroundColor: '#EAF6FF',
+  },
+  expiredText: {
+    color: '#D92D20',
+    fontWeight: '600',
+  },
+  activeText: {
+    color: '#027A48',
+    fontWeight: '700',
+  },
   studentCard: {paddingHorizontal: 13, paddingVertical: 10, borderRadius: 16},
   compactStudentCard: {
     paddingHorizontal: 11,
