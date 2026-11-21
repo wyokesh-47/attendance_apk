@@ -2,6 +2,7 @@
   "expo": {
     "name": "ATTENDANCE",
     "slug": "acadence-attendance",
+    "owner": "yokesh_27",
     "scheme": "acadence-attendance",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -29,6 +30,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "2c4d765e-da08-429b-b4a8-9f12dcb7b514"
+      }
     }
   }
 }
